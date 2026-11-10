@@ -4,11 +4,11 @@ on:
   push:
     branches: "**"
     paths:
-      - "backend/**"
+      - "../../backend/**"
   pull_request:
     branches: main
     paths:
-      - "backend/**"
+      - "../../backend/**"
 
 permissions:
   contents: read
