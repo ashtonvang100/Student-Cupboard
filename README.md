@@ -35,6 +35,8 @@ curl http://127.0.0.1:3000/api/health
 
 The API binds to loopback by default. Health returns 503 if its database query fails. Startup does not apply migrations. API reference: [docs/API.md](docs/API.md).
 
+Frontend developers: start with the [frontend setup guide](docs/API.md#frontend-setup), then use the [endpoint reference](docs/API.md#endpoints), [TypeScript types and request helper](docs/API.md#typescript-types-and-request-helper), and [integration workflows](docs/API.md#frontend-workflows).
+
 ## Architecture
 
 - `src/index.ts`: Node server, configuration, graceful server/pool shutdown.
