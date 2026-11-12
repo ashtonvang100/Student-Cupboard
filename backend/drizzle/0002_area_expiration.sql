@@ -1,0 +1,1 @@
+ALTER TABLE "inventory_area_counts" ADD COLUMN "expiration_date" date;

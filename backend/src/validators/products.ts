@@ -16,13 +16,13 @@ function nutrition(value: unknown): Nutrition {
   return result
 }
 
-export type ProductInput = { name?: string; brand?: string | null; barcode?: string | null; description?: string | null; categoryId?: number; nutrition?: Nutrition | null }
+export type ProductInput = { name?: string; brand?: string | null; barcode?: string | null; description?: string | null; packageSize?: string | null; variation?: string | null; categoryId?: number; nutrition?: Nutrition | null }
 export function productInput(value: unknown, patch = false): ProductInput {
   const input = object(value)
-  keys(input, ['name', 'brand', 'barcode', 'description', 'categoryId', 'nutrition'])
+  keys(input, ['name', 'brand', 'barcode', 'description', 'categoryId', 'nutrition', 'packageSize', 'variation'])
   const result: ProductInput = {}
   if ('name' in input) result.name = string(input.name, 'name', 200)
-  for (const [field, max] of [['brand', 200], ['barcode', 100], ['description', 4000]] as const) {
+  for (const [field, max] of [['brand', 200], ['barcode', 100], ['description', 4000], ['packageSize', 100], ['variation', 200]] as const) {
     if (field in input) result[field] = input[field] === null ? null : string(input[field], field, max)
   }
   if ('categoryId' in input) result.categoryId = integer(input.categoryId, 'categoryId', 1)

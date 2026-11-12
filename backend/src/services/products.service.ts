@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import type { Database } from '../db/index.js'
-import { products, inventory } from '../db/schema.js'
+import { products, inventory, productNutrition } from '../db/schema.js'
 import { ApiError } from '../middleware/error-handler.js'
 import type { Pagination } from '../validators/common.js'
 import type { ProductInput } from '../validators/products.js'
@@ -11,7 +11,8 @@ export class ProductsService {
   async get(id: number) {
     const [row] = await this.db.select().from(products).where(eq(products.id, id))
     if (!row) throw new ApiError(404, 'NOT_FOUND', 'Product not found')
-    return row
+    const [profile] = await this.db.select().from(productNutrition).where(eq(productNutrition.productId, id))
+    return { ...row, aiNutrition: profile ?? null }
   }
   async create(input: ProductInput & { name: string; categoryId: number }) {
     return this.db.transaction(async (tx) => {
