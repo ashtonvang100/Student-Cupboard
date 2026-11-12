@@ -1,6 +1,10 @@
+# Authentication and scanning update
+
+All resource endpoints below now require `Authorization: Bearer <staff-token>`; `/api/health` remains public. Configure per-person tokens in `STAFF_API_TOKENS`. Missing/invalid credentials return 401; non-staff credentials return 403. See [AI scanning API and examples](INVENTORY_SCANNING.md) for scans, area reconciliation, nutrition provenance, and upload limits. The resource contract below preserves existing fields; inventory detail now also includes `areas`, product detail includes `aiNutrition`, and history includes actor/scan IDs and previous/new quantities.
+
 # Student Cupboard REST API
 
-Local base URL: `http://127.0.0.1:3000/api`. Bodies and responses use JSON. Send `Content-Type: application/json` for POST/PATCH. Maximum request body size: 64 KiB.
+Local base URL: `http://127.0.0.1:3000/api`. Bodies and responses use JSON. Send `Content-Type: application/json` for POST/PATCH. Maximum JSON request body size: 64 KiB. Scan uploads use multipart form data and separate limits described in the scanning guide.
 
 This reference describes the routes currently implemented in `src/routes/`, their validators, and service behavior. Example IDs and timestamps are illustrative; use IDs returned by your own backend.
 
@@ -40,15 +44,15 @@ export default defineConfig({
 
 Keep the `/api` prefix; no rewrite is needed. Call `fetch('/api/products')` from the browser. A direct request from another origin, such as a frontend on port 5173, requires backend CORS configuration that is not currently present. The development proxy does not configure production routing.
 
-No login endpoint, bearer token, cookie session, or current-user endpoint exists yet. Frontend requests currently need no authentication headers. Database credentials belong only in the backend environment.
+No login, cookie session or current-user endpoint is implemented. Resource requests require a per-person bearer token issued through the server-managed staff configuration. Database and OpenAI credentials belong only in the backend environment.
 
 ## Access and production readiness
 
-Authentication is not implemented. All category, product, inventory, and history endpoints require authenticated, authorized pantry staff before production. Read endpoints require inventory read permission; category/product writes and inventory unit/threshold changes require management permission; stock transactions and quantity changes require stock-write permission. These are requirements to implement with the institution's approved identity system, not currently enforced roles. Health may be exposed to infrastructure health checks with an approved network policy. Never expose this development API publicly. Cross-origin access is not enabled; use a local development proxy or implement an explicit origin allowlist after frontend origins are agreed.
+The server enforces configured staff bearer credentials for category, product, inventory, history and scanning endpoints. Empty credentials deny access. Institutional SSO and finer management permissions remain future work. Health may be exposed to infrastructure health checks with an approved network policy. Cross-origin access is not enabled; use a local development proxy or implement an explicit origin allowlist after frontend origins are agreed.
 
 ## Common conventions
 
-IDs are positive integer numbers (1–2,147,483,647); use their string representation in paths. `:id` under `/inventory` always refers to **inventory.id**, not product ID. Use `productId` in inventory responses to associate products. Fields use camelCase. Timestamps are ISO 8601 strings. Unknown body fields are rejected; PATCH requires at least one supported field. Omitted fields remain unchanged. Nullable fields can be cleared with `null`; empty strings are rejected. Nutrition PATCH replaces the whole nutrition object.
+Category, product, inventory and transaction IDs are positive integer numbers (1–2,147,483,647); use their string representation in paths. `:id` under `/inventory` always refers to **inventory.id**, not product ID. Use `productId` in inventory responses to associate products. Fields use camelCase. Timestamps are ISO 8601 strings. Unknown body fields are rejected; PATCH requires at least one supported field. Omitted fields remain unchanged. Nullable fields can be cleared with `null`; empty strings are rejected. Nutrition PATCH replaces the whole nutrition object.
 
 Success responses use `{ "data": ... }`. Collection endpoints accept `page` (positive integer, default 1, maximum 1,000,000) and `limit` (1–100, default 20). Unknown and repeated collection query parameters are rejected. Results are ordered by ID ascending, except transaction history which uses ID descending (newest first). Offset pagination may shift when data changes; there is no total count.
 
@@ -308,6 +312,8 @@ class ApiRequestError extends Error {
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
+  // Supply your privately issued staff token; never use the OpenAI API key.
+  // headers.set('Authorization', `Bearer ${staffToken}`)
   if (init.body !== undefined && init.body !== null) {
     headers.set('Content-Type', 'application/json')
   }

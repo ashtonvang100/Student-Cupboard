@@ -2,6 +2,8 @@
 
 TypeScript / Node.js / Hono API with PostgreSQL and Drizzle ORM. The existing npm, Hono Node adapter, ESM configuration, and `GET /` greeting are preserved. There is no frontend in this project.
 
+AI inventory scanning is available with staff review before stock changes. Start with [the scanning setup and API guide](docs/INVENTORY_SCANNING.md) for configuration, uploads, approval examples, nutrition provenance, and area reconciliation.
+
 ## Local setup
 
 Requires Node.js 22 or newer, npm, and access to the **existing local** PostgreSQL database `student_cupboard`.
@@ -23,7 +25,7 @@ HOST=127.0.0.1
 PORT=3000
 ```
 
-Only loopback database hosts are accepted (`localhost`, `127.0.0.1`, `::1`); remote databases, including AWS RDS, are deliberately disabled pending explicit review. Local connections use no TLS. This application never creates a database. If PostgreSQL reports that `student_cupboard` does not exist, confirm the host, port, and role with the database owner instead of creating a replacement.
+Loopback database hosts are the default. Optional `DATABASE_URL` takes precedence over PG settings; remote/RDS hosts require `DATABASE_ALLOW_REMOTE=true` and a trusted PEM `DATABASE_CA_CERT`, with verified TLS. Local connections use no TLS. This application never creates a database. If PostgreSQL reports that `student_cupboard` does not exist, confirm the host, port, and role with the database owner instead of creating a replacement.
 
 ```sh
 npm run db:check       # read-only SELECT 1
@@ -40,7 +42,7 @@ Frontend developers: start with the [frontend setup guide](docs/API.md#frontend-
 ## Architecture
 
 - `src/index.ts`: Node server, configuration, graceful server/pool shutdown.
-- `src/app.ts`: composable Hono app, health, response headers, 64 KiB request limit, route registration.
+- `src/app.ts`: composable Hono app, health, response headers, 64 KiB JSON limits, bounded scan uploads, route registration.
 - `src/routes/`: HTTP handling and response status codes.
 - `src/validators/`: strict body, query, and path validation; unknown body and collection query fields are rejected.
 - `src/services/`: business rules, queries, and atomic stock changes.
@@ -48,7 +50,7 @@ Frontend developers: start with the [frontend setup guide](docs/API.md#frontend-
 - `src/middleware/`: consistent sanitized errors.
 - `drizzle/`: generated SQL, snapshots, and migration journal (commit all three).
 
-No authentication provider has been chosen. This is an initial development API and **must not be exposed publicly** until authentication and authorization are implemented. See the API reference for endpoint access requirements.
+All API resource endpoints require a per-person staff bearer token configured in `STAFF_API_TOKENS`; missing credentials deny access. Only `/` and `/api/health` are public. See the scanning guide for setup and token lifecycle. Institutional SSO remains a future integration.
 
 ## Schema and stock rules
 
@@ -58,7 +60,7 @@ IDs are PostgreSQL integer identities. All timestamps are `timestamptz`, returne
 
 Stock is a whole number of a named unit (default `each`), from 0 through 2,147,483,647. Fractional weight/volume tracking would need an agreed precision and migration. Product creation atomically adds a zero-stock inventory row. Both stock PATCH and signed transactions lock the inventory row with `SELECT FOR UPDATE`, update quantity, and insert history in one transaction. PATCH requires a reason if quantity is supplied; a no-op quantity creates no history. Unit changes are allowed only when current stock is zero; no conversion is performed. Threshold and unit-only updates do not create quantity history. Transaction types and signs, nonnegative quantities and thresholds, unique values, and foreign keys also have database constraints.
 
-History contains product, delta, type, reason, and time. Actor attribution awaits the authentication design; unit snapshots, lots, expiry dates, locations, and idempotency keys are future schema decisions. Use the API as the only stock writer; direct SQL can bypass service-level history creation. Before production, restrict database privileges, including UPDATE/DELETE on history, and select how to enforce audit rules for any additional writers.
+History contains product, delta, type, reason, and time, plus authenticated actor and previous/new quantities for new changes. Scan transactions also reference the scan. Approved scans retain area baselines and expiry dates; lot tracking and unit snapshots remain future work. Use the API as the only stock writer; direct SQL can bypass service-level history creation. Before production, restrict database privileges, including UPDATE/DELETE on history, and select how to enforce audit rules for any additional writers.
 
 ## Migrations and builds
 
@@ -75,6 +77,8 @@ npm run build          # compiles src/ into dist/
 npm start              # starts compiled server; still reads .env locally
 ```
 
+Apply `0001_ai_inventory_scanning.sql` and `0002_area_expiration.sql` after the initial migration. They add scan/review records, area counts, separate nutrition candidates, package identity, and audit fields without replacing existing tables.
+
 The initial migration is additive: it creates four tables, constraints, and indexes. The migration wrapper refuses the first migration if matching public tables already exist without the Drizzle journal. Reconcile an existing schema manually rather than overwriting it. Migration execution uses Drizzle's journal and transactions; reruns are no-ops. Run only one migration process at a time. Future generated migrations may be destructive and always need SQL review.
 
 ## Tests
@@ -85,7 +89,7 @@ The Node.js test runner and existing `tsx` are used; no additional test framewor
 npm test
 ```
 
-Validation and HTTP error tests run without a database. PostgreSQL integration tests are **skipped** unless `TEST_DATABASE_URL` is set. To run integration tests against a separately provisioned local test database, put the URL in `.env` and run:
+Validation, mocked OpenAI, image processing and HTTP error tests run without a database. GitHub Actions supplies a disposable PostgreSQL service and runs the integration suites as well. PostgreSQL integration tests are **skipped** unless `TEST_DATABASE_URL` is set. To run integration tests against a separately provisioned local test database, put the URL in `.env` and run:
 
 ```dotenv
 TEST_DATABASE_URL=postgresql://test_role:test_password@localhost:5432/student_cupboard_test
@@ -114,9 +118,9 @@ Coverage includes real connectivity, health, category/product CRUD operations su
 ## Before production
 
 - Confirm the real existing database location and schema; review and apply migrations with backups.
-- Integrate the institution-approved identity system and enforce staff/manager permissions on every resource endpoint. Add authenticated actor identity to stock history and restrict history database permissions.
+- Integrate the institution-approved identity system when available; current resource routes enforce configured staff bearer credentials. Restrict history database permissions.
 - Add deployment-specific HTTPS, secrets management, database TLS, a restricted database role, an approved CORS allowlist if needed, rate limiting, monitoring, and backup/restore procedures.
 - Establish retry/idempotency behavior for stock-changing requests and agree on unit, expiration, and lot tracking needs.
 - Review dependency advisories before CI/deployment. At implementation time, `npm audit` reported four moderate development-only findings in Drizzle Kit's `@esbuild-kit/esm-loader` → `@esbuild-kit/core-utils` → `esbuild` chain ([GHSA-67mh-4wv8-2f99](https://github.com/advisories/GHSA-67mh-4wv8-2f99)); runtime dependencies had no findings. The advisory concerns esbuild's development server, which this project does not run. No forced downgrade or transitive override was applied; review an upstream fix before introducing development-server tooling.
 
-No AWS deployment or remote database access is configured.
+No AWS deployment or production database access was performed. Remote connectivity requires explicit configuration as described above.
