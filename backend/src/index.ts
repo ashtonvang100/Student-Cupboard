@@ -9,7 +9,7 @@ const port = integerSetting(process.env.PORT, 3000, 'PORT')
 const app = createApp(db)
 const server = serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   console.log(`Server is running on http://${host}:${info.port}`)
-  console.log('Development API: authentication and authorization are not configured.')
+  console.log('API resource endpoints require configured staff bearer credentials.')
 })
 
 let closing = false

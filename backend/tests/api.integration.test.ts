@@ -16,7 +16,12 @@ describe('PostgreSQL integration (isolated test records)', { skip: !url }, () =>
     throw new Error('Integration tests require a local student_cupboard_test URL without query parameters')
   }
   const { db, pool } = createDatabase({ connectionString: url, ssl: false, connectionTimeoutMillis: 2000 })
-  const app = createApp(db)
+  const testApp = createApp(db, { staff: [{ id: 'test-staff', role: 'staff', token: 'test-token-with-at-least-32-characters' }] })
+  const app = { request: (path: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', 'Bearer test-token-with-at-least-32-characters')
+    return testApp.request(path, { ...init, headers })
+  } }
   const marker = `test-${randomUUID()}`
   let categoryId: number
   let productId: number

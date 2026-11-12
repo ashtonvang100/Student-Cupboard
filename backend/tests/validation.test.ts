@@ -53,7 +53,12 @@ test('rejects remote databases and wrong database names before opening connectio
 
 test('HTTP validation, unknown routes, body limit, and unavailable health response', async () => {
   const { db, pool } = createDatabase({ host: '127.0.0.1', port: 1, database: 'student_cupboard_test', connectionTimeoutMillis: 100 })
-  const app = createApp(db)
+  const testApp = createApp(db, { staff: [{ id: 'test-staff', role: 'staff', token: 'test-token-with-at-least-32-characters' }] })
+  const app = { request: (path: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', 'Bearer test-token-with-at-least-32-characters')
+    return testApp.request(path, { ...init, headers })
+  } }
   try {
     assert.equal((await app.request('/api/health')).status, 503)
     assert.equal((await app.request('/no-such-route')).status, 404)
