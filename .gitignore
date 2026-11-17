@@ -1,0 +1,10 @@
+node_modules/
+**/dist/
+**/.env
+.local/
+.DS_Store
+**/.env.*
+!**/.env.example
+**/node_modules/
+**/tmp/
+**/.openai/
