@@ -31,15 +31,15 @@ Use `/api` as the frontend base path with a development proxy. For example, merg
 
 ```ts
 // vite.config.ts in the frontend project
-import { defineConfig } from 'vite'
+import { defineConfig } from "vite";
 
 export default defineConfig({
   server: {
     proxy: {
-      '/api': { target: 'http://127.0.0.1:3000', changeOrigin: true },
+      "/api": { target: "http://127.0.0.1:3000", changeOrigin: true },
     },
   },
-})
+});
 ```
 
 Keep the `/api` prefix; no rewrite is needed. Call `fetch('/api/products')` from the browser. A direct request from another origin, such as a frontend on port 5173, requires backend CORS configuration that is not currently present. The development proxy does not configure production routing.
@@ -62,29 +62,37 @@ Send numeric body fields as JSON numbers, not strings from form inputs. Read-onl
 
 ```json
 {
-  "data": [{ "id": 1, "name": "Grains", "description": null, "createdAt": "2026-11-05T12:00:00.000Z", "updatedAt": "2026-11-05T12:00:00.000Z" }],
+  "data": [
+    {
+      "id": 1,
+      "name": "Grains",
+      "description": null,
+      "createdAt": "2026-11-05T12:00:00.000Z",
+      "updatedAt": "2026-11-05T12:00:00.000Z"
+    }
+  ],
   "pagination": { "page": 1, "limit": 20, "hasMore": false }
 }
 ```
 
 ## Endpoints
 
-| Method | Path | Input | Success |
-|---|---|---|---|
-| GET | `/health` | None | 200 connectivity result; 503 when database is unavailable |
-| GET | `/categories` | `page`, `limit` | 200 category collection |
-| GET | `/categories/:id` | Category ID | 200 category |
-| POST | `/categories` | Category creation body | 201 category; `Location` header |
-| PATCH | `/categories/:id` | Category ID, category patch body | 200 updated category |
-| GET | `/products` | `page`, `limit` | 200 product collection |
-| GET | `/products/:id` | Product ID | 200 product |
-| POST | `/products` | Product creation body | 201 product; `Location` header; zero-stock inventory also created |
-| PATCH | `/products/:id` | Product ID, product patch body | 200 updated product |
-| GET | `/inventory` | `page`, `limit` | 200 inventory collection |
-| GET | `/inventory/:id` | Inventory ID | 200 inventory record |
-| PATCH | `/inventory/:id` | Inventory ID, inventory patch body | 200 updated inventory record |
-| GET | `/inventory/:id/transactions` | Inventory ID; `page`, `limit` | 200 transaction collection |
-| POST | `/inventory/:id/transactions` | Inventory ID, transaction body | 201 transaction; inventory quantity updated atomically |
+| Method | Path                          | Input                              | Success                                                           |
+| ------ | ----------------------------- | ---------------------------------- | ----------------------------------------------------------------- |
+| GET    | `/health`                     | None                               | 200 connectivity result; 503 when database is unavailable         |
+| GET    | `/categories`                 | `page`, `limit`                    | 200 category collection                                           |
+| GET    | `/categories/:id`             | Category ID                        | 200 category                                                      |
+| POST   | `/categories`                 | Category creation body             | 201 category; `Location` header                                   |
+| PATCH  | `/categories/:id`             | Category ID, category patch body   | 200 updated category                                              |
+| GET    | `/products`                   | `page`, `limit`                    | 200 product collection                                            |
+| GET    | `/products/:id`               | Product ID                         | 200 product                                                       |
+| POST   | `/products`                   | Product creation body              | 201 product; `Location` header; zero-stock inventory also created |
+| PATCH  | `/products/:id`               | Product ID, product patch body     | 200 updated product                                               |
+| GET    | `/inventory`                  | `page`, `limit`                    | 200 inventory collection                                          |
+| GET    | `/inventory/:id`              | Inventory ID                       | 200 inventory record                                              |
+| PATCH  | `/inventory/:id`              | Inventory ID, inventory patch body | 200 updated inventory record                                      |
+| GET    | `/inventory/:id/transactions` | Inventory ID; `page`, `limit`      | 200 transaction collection                                        |
+| POST   | `/inventory/:id/transactions` | Inventory ID, transaction body     | 201 transaction; inventory quantity updated atomically            |
 
 The preserved starter `GET /` returns plain text `Hello Hono!` outside the API namespace. There are no deletion endpoints or history modification endpoints.
 
@@ -98,10 +106,10 @@ The preserved starter `GET /` returns plain text `Hello Hono!` outside the API n
 
 ## Categories
 
-| Field | Type | POST | PATCH |
-|---|---|---|---|
-| `name` | trimmed nonempty string, max 120 | Required, case-insensitive unique | Optional |
-| `description` | trimmed nonempty string, max 4000, or null | Optional, default null | Optional |
+| Field         | Type                                       | POST                              | PATCH    |
+| ------------- | ------------------------------------------ | --------------------------------- | -------- |
+| `name`        | trimmed nonempty string, max 120           | Required, case-insensitive unique | Optional |
+| `description` | trimmed nonempty string, max 4000, or null | Optional, default null            | Optional |
 
 ```http
 POST /api/categories
@@ -111,21 +119,29 @@ Content-Type: application/json
 ```
 
 ```json
-{ "data": { "id": 1, "name": "Grains", "description": "Rice, oats, and pasta", "createdAt": "2026-11-05T12:00:00.000Z", "updatedAt": "2026-11-05T12:00:00.000Z" } }
+{
+  "data": {
+    "id": 1,
+    "name": "Grains",
+    "description": "Rice, oats, and pasta",
+    "createdAt": "2026-11-05T12:00:00.000Z",
+    "updatedAt": "2026-11-05T12:00:00.000Z"
+  }
+}
 ```
 
 Example PATCH body: `{ "description": null }`. GET detail returns the same record shape. Duplicate names return 409.
 
 ## Products
 
-| Field | Type | POST | PATCH |
-|---|---|---|---|
-| `name` | trimmed nonempty string, max 200 | Required | Optional |
-| `categoryId` | positive integer, existing category | Required | Optional |
-| `brand` | trimmed nonempty string, max 200, or null | Optional | Optional |
-| `barcode` | trimmed nonempty string, max 100, or null | Optional, unique when present | Optional |
-| `description` | trimmed nonempty string, max 4000, or null | Optional | Optional |
-| `nutrition` | object described below, or null | Optional | Optional, replaces object |
+| Field         | Type                                       | POST                          | PATCH                     |
+| ------------- | ------------------------------------------ | ----------------------------- | ------------------------- |
+| `name`        | trimmed nonempty string, max 200           | Required                      | Optional                  |
+| `categoryId`  | positive integer, existing category        | Required                      | Optional                  |
+| `brand`       | trimmed nonempty string, max 200, or null  | Optional                      | Optional                  |
+| `barcode`     | trimmed nonempty string, max 100, or null  | Optional, unique when present | Optional                  |
+| `description` | trimmed nonempty string, max 4000, or null | Optional                      | Optional                  |
+| `nutrition`   | object described below, or null            | Optional                      | Optional, replaces object |
 
 All omitted optional fields default to null. Product quantity is managed through inventory, never through product requests. Barcodes are strings so leading zeros survive.
 
@@ -147,7 +163,14 @@ Content-Type: application/json
     "barcode": "001234567890",
     "description": null,
     "categoryId": 1,
-    "nutrition": { "servingSize": "45 g dry", "calories": 160, "totalFatGrams": 1.5, "sodiumMilligrams": 0, "totalCarbohydrateGrams": 34, "proteinGrams": 3 },
+    "nutrition": {
+      "servingSize": "45 g dry",
+      "calories": 160,
+      "totalFatGrams": 1.5,
+      "sodiumMilligrams": 0,
+      "totalCarbohydrateGrams": 34,
+      "proteinGrams": 3
+    },
     "createdAt": "2026-11-05T12:00:00.000Z",
     "updatedAt": "2026-11-05T12:00:00.000Z"
   }
@@ -161,17 +184,26 @@ Example PATCH body: `{ "brand": "New Brand", "barcode": null }`. GET detail retu
 The API creates one row automatically for each new product with quantity 0, unit `each`, and threshold 0. There is no manual inventory creation endpoint. GET returns:
 
 ```json
-{ "data": { "id": 7, "productId": 10, "quantity": 12, "unit": "each", "lowStockThreshold": 5, "updatedAt": "2026-11-05T12:00:00.000Z" } }
+{
+  "data": {
+    "id": 7,
+    "productId": 10,
+    "quantity": 12,
+    "unit": "each",
+    "lowStockThreshold": 5,
+    "updatedAt": "2026-11-05T12:00:00.000Z"
+  }
+}
 ```
 
 PATCH fields:
 
-| Field | Type | Behavior |
-|---|---|---|
-| `quantity` | integer 0–2,147,483,647 | Absolute stock count; requires reason |
-| `reason` | trimmed nonempty string, max 4000 | Required with quantity, rejected without quantity |
-| `unit` | trimmed nonempty string, max 50 | May change only when current quantity is zero |
-| `lowStockThreshold` | integer 0–2,147,483,647 | Alert threshold; no automatic alerts yet |
+| Field               | Type                              | Behavior                                          |
+| ------------------- | --------------------------------- | ------------------------------------------------- |
+| `quantity`          | integer 0–2,147,483,647           | Absolute stock count; requires reason             |
+| `reason`            | trimmed nonempty string, max 4000 | Required with quantity, rejected without quantity |
+| `unit`              | trimmed nonempty string, max 50   | May change only when current quantity is zero     |
+| `lowStockThreshold` | integer 0–2,147,483,647           | Alert threshold; no automatic alerts yet          |
 
 ```http
 PATCH /api/inventory/7
@@ -184,11 +216,11 @@ Response: the updated inventory record in `{ "data": ... }`. A real quantity cha
 
 ## Inventory transactions
 
-| Field | Type | Required |
-|---|---|---|
-| `transactionType` | `"addition"`, `"removal"`, or `"adjustment"` | Yes |
-| `quantityChange` | nonzero integer −2,147,483,647 through 2,147,483,647 | Yes |
-| `reason` | trimmed nonempty string, max 4000 | Yes |
+| Field             | Type                                                 | Required |
+| ----------------- | ---------------------------------------------------- | -------- |
+| `transactionType` | `"addition"`, `"removal"`, or `"adjustment"`         | Yes      |
+| `quantityChange`  | nonzero integer −2,147,483,647 through 2,147,483,647 | Yes      |
+| `reason`          | trimmed nonempty string, max 4000                    | Yes      |
 
 `addition` requires a positive delta; `removal` requires a negative delta; `adjustment` allows either sign. All deltas must leave quantity within the valid stock range. History is append-only through this API. A failed request changes neither quantity nor history.
 
@@ -200,7 +232,16 @@ Content-Type: application/json
 ```
 
 ```json
-{ "data": { "id": 42, "productId": 10, "transactionType": "removal", "quantityChange": -2, "reason": "Pantry distribution", "createdAt": "2026-11-05T12:00:00.000Z" } }
+{
+  "data": {
+    "id": 42,
+    "productId": 10,
+    "transactionType": "removal",
+    "quantityChange": -2,
+    "reason": "Pantry distribution",
+    "createdAt": "2026-11-05T12:00:00.000Z"
+  }
+}
 ```
 
 GET history returns these records in the collection envelope, newest ID first. A nonexistent inventory ID returns 404, while an existing row with no history returns an empty collection. Read inventory again to obtain its updated quantity. Requests are not idempotent: retrying a transaction POST can apply it twice. Do not automatically retry without an agreed idempotency mechanism.
@@ -208,133 +249,142 @@ GET history returns these records in the collection envelope, newest ID first. A
 ## Errors
 
 ```json
-{ "error": { "code": "INSUFFICIENT_STOCK", "message": "The change would make inventory negative" } }
+{
+  "error": {
+    "code": "INSUFFICIENT_STOCK",
+    "message": "The change would make inventory negative"
+  }
+}
 ```
 
-| Status | Code | Meaning |
-|---|---|---|
-| 400 | `VALIDATION_ERROR` | Invalid ID, query, fields, data types, malformed JSON, missing required fields, or negative absolute quantity |
-| 400 | `INVALID_VALUE` | Database check or numeric constraint rejected the value |
-| 404 | `NOT_FOUND` | Record or route does not exist |
-| 409 | `CONFLICT` | Category name or barcode already exists |
-| 409 | `INVALID_REFERENCE` | Referenced category/product does not exist |
-| 409 | `INSUFFICIENT_STOCK` | Delta would make quantity negative |
-| 409 | `QUANTITY_LIMIT` | Delta would overflow maximum quantity |
-| 409 | `UNIT_IN_USE` | Cannot change the unit of nonzero stock |
-| 413 | `BODY_TOO_LARGE` | Body exceeds 64 KiB |
-| 415 | `UNSUPPORTED_MEDIA_TYPE` | POST/PATCH requires application/json |
-| 500 | `INTERNAL_ERROR` | Unexpected error; internal SQL and credentials are hidden |
-| 503 | `DATABASE_UNAVAILABLE` | Health endpoint could not query PostgreSQL |
+| Status | Code                     | Meaning                                                                                                       |
+| ------ | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 400    | `VALIDATION_ERROR`       | Invalid ID, query, fields, data types, malformed JSON, missing required fields, or negative absolute quantity |
+| 400    | `INVALID_VALUE`          | Database check or numeric constraint rejected the value                                                       |
+| 404    | `NOT_FOUND`              | Record or route does not exist                                                                                |
+| 409    | `CONFLICT`               | Category name or barcode already exists                                                                       |
+| 409    | `INVALID_REFERENCE`      | Referenced category/product does not exist                                                                    |
+| 409    | `INSUFFICIENT_STOCK`     | Delta would make quantity negative                                                                            |
+| 409    | `QUANTITY_LIMIT`         | Delta would overflow maximum quantity                                                                         |
+| 409    | `UNIT_IN_USE`            | Cannot change the unit of nonzero stock                                                                       |
+| 413    | `BODY_TOO_LARGE`         | Body exceeds 64 KiB                                                                                           |
+| 415    | `UNSUPPORTED_MEDIA_TYPE` | POST/PATCH requires application/json                                                                          |
+| 500    | `INTERNAL_ERROR`         | Unexpected error; internal SQL and credentials are hidden                                                     |
+| 503    | `DATABASE_UNAVAILABLE`   | Health endpoint could not query PostgreSQL                                                                    |
 
 ## TypeScript types and request helper
 
 These are wire types for frontend use. Dates stay strings until explicitly parsed. The generic helper assumes the backend's documented JSON envelope; TypeScript types do not perform runtime response validation.
 
 ```ts
-type ApiError = { error: { code: string; message: string } }
-type ItemResponse<T> = { data: T }
+type ApiError = { error: { code: string; message: string } };
+type ItemResponse<T> = { data: T };
 type CollectionResponse<T> = {
-  data: T[]
-  pagination: { page: number; limit: number; hasMore: boolean }
-}
+  data: T[];
+  pagination: { page: number; limit: number; hasMore: boolean };
+};
 type Category = {
-  id: number
-  name: string
-  description: string | null
-  createdAt: string
-  updatedAt: string
-}
+  id: number;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 type Nutrition = {
-  servingSize?: string
-  calories?: number
-  totalFatGrams?: number
-  sodiumMilligrams?: number
-  totalCarbohydrateGrams?: number
-  proteinGrams?: number
-}
+  servingSize?: string;
+  calories?: number;
+  totalFatGrams?: number;
+  sodiumMilligrams?: number;
+  totalCarbohydrateGrams?: number;
+  proteinGrams?: number;
+};
 type Product = {
-  id: number
-  name: string
-  categoryId: number
-  brand: string | null
-  barcode: string | null
-  description: string | null
-  nutrition: Nutrition | null
-  createdAt: string
-  updatedAt: string
-}
+  id: number;
+  name: string;
+  categoryId: number;
+  brand: string | null;
+  barcode: string | null;
+  description: string | null;
+  nutrition: Nutrition | null;
+  createdAt: string;
+  updatedAt: string;
+};
 type Inventory = {
-  id: number
-  productId: number
-  quantity: number
-  unit: string
-  lowStockThreshold: number
-  updatedAt: string
-}
+  id: number;
+  productId: number;
+  quantity: number;
+  unit: string;
+  lowStockThreshold: number;
+  updatedAt: string;
+};
 type InventoryTransaction = {
-  id: number
-  productId: number
-  transactionType: 'addition' | 'removal' | 'adjustment'
-  quantityChange: number
-  reason: string
-  createdAt: string
-}
-type CreateCategory = { name: string; description?: string | null }
-type PatchCategory = Partial<CreateCategory>
+  id: number;
+  productId: number;
+  transactionType: "addition" | "removal" | "adjustment";
+  quantityChange: number;
+  reason: string;
+  createdAt: string;
+};
+type CreateCategory = { name: string; description?: string | null };
+type PatchCategory = Partial<CreateCategory>;
 type CreateProduct = {
-  name: string
-  categoryId: number
-  brand?: string | null
-  barcode?: string | null
-  description?: string | null
-  nutrition?: Nutrition | null
-}
-type PatchProduct = Partial<CreateProduct>
+  name: string;
+  categoryId: number;
+  brand?: string | null;
+  barcode?: string | null;
+  description?: string | null;
+  nutrition?: Nutrition | null;
+};
+type PatchProduct = Partial<CreateProduct>;
 type PatchInventory = {
-  unit?: string
-  lowStockThreshold?: number
+  unit?: string;
+  lowStockThreshold?: number;
 } & (
-  | { quantity: number; reason: string }
-  | { quantity?: never; reason?: never }
-)
+  { quantity: number; reason: string } | { quantity?: never; reason?: never }
+);
 type CreateTransaction = Pick<
-  InventoryTransaction, 'transactionType' | 'quantityChange' | 'reason'
->
+  InventoryTransaction,
+  "transactionType" | "quantityChange" | "reason"
+>;
 
 class ApiRequestError extends Error {
-  constructor(public status: number, public code: string, message: string) {
-    super(message)
-    this.name = 'ApiRequestError'
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
   }
 }
 
 // path starts with "/" and is relative to /api, e.g. "/products".
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers)
-  headers.set('Accept', 'application/json')
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
   // Supply your privately issued staff token; never use the OpenAI API key.
   // headers.set('Authorization', `Bearer ${staffToken}`)
   if (init.body !== undefined && init.body !== null) {
-    headers.set('Content-Type', 'application/json')
+    headers.set("Content-Type", "application/json");
   }
-  const response = await fetch(`/api${path}`, { ...init, headers })
+  const response = await fetch(`/api${path}`, { ...init, headers });
   // A proxy may return an HTML or empty error response.
-  const payload: unknown = await response.json().catch(() => null)
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    const failure = payload as ApiError | null
+    const failure = payload as ApiError | null;
     throw new ApiRequestError(
       response.status,
-      failure?.error?.code ?? 'HTTP_ERROR',
+      failure?.error?.code ?? "HTTP_ERROR",
       failure?.error?.message ?? `Request failed (${response.status})`,
-    )
+    );
   }
-  if (payload === null) throw new Error('Expected a JSON API response')
-  return payload as T
+  if (payload === null) throw new Error("Expected a JSON API response");
+  return payload as T;
 }
 
 const result = await api<CollectionResponse<Inventory>>(
-  '/inventory?page=1&limit=20',
-)
+  "/inventory?page=1&limit=20",
+);
 ```
 
 PATCH types still require the validation rules above, including at least one field. Transaction signs and numeric limits also need validation. Network failures and aborted requests reject `fetch` without an HTTP response; handle these separately from `ApiRequestError`. This helper never retries requests.
@@ -349,34 +399,38 @@ To build complete lookup maps for a small inventory, fetch every page of each re
 
 ```ts
 async function allPages<T>(path: string): Promise<T[]> {
-  const rows: T[] = []
-  let page = 1
+  const rows: T[] = [];
+  let page = 1;
   while (true) {
-    const result = await api<CollectionResponse<T>>(`${path}?page=${page}&limit=100`)
-    rows.push(...result.data)
-    if (!result.pagination.hasMore) return rows
-    page += 1
+    const result = await api<CollectionResponse<T>>(
+      `${path}?page=${page}&limit=100`,
+    );
+    rows.push(...result.data);
+    if (!result.pagination.hasMore) return rows;
+    page += 1;
   }
 }
 
 const [products, categories, inventory] = await Promise.all([
-  allPages<Product>('/products'),
-  allPages<Category>('/categories'),
-  allPages<Inventory>('/inventory'),
-])
-const productsById = new Map(products.map((product) => [product.id, product]))
-const categoriesById = new Map(categories.map((category) => [category.id, category]))
+  allPages<Product>("/products"),
+  allPages<Category>("/categories"),
+  allPages<Inventory>("/inventory"),
+]);
+const productsById = new Map(products.map((product) => [product.id, product]));
+const categoriesById = new Map(
+  categories.map((category) => [category.id, category]),
+);
 
 const displayRows = inventory.map((stock) => {
-  const product = productsById.get(stock.productId)
+  const product = productsById.get(stock.productId);
   return {
     ...stock,
-    productName: product?.name ?? 'Unknown product',
+    productName: product?.name ?? "Unknown product",
     categoryName: product
-      ? categoriesById.get(product.categoryId)?.name ?? 'Unknown category'
-      : 'Unknown category',
-  }
-})
+      ? (categoriesById.get(product.categoryId)?.name ?? "Unknown category")
+      : "Unknown category",
+  };
+});
 ```
 
 The `allPages` helper takes a resource path with no query string. Multi-page and multi-resource reads are not a consistent snapshot; records may change while loading. For larger catalogs, use paginated screens and agree on backend filtering/lookup endpoints before loading every record. No low-stock boolean or alert is returned; the UI must choose how to display `quantity` relative to `lowStockThreshold`.
@@ -391,26 +445,29 @@ The `allPages` helper takes a resource path with no query string. Multi-page and
 ```ts
 // categoryId comes from the category selector; inventoryId from the lookup above.
 async function createProduct(categoryId: number) {
-  return api<ItemResponse<Product>>('/products', {
-    method: 'POST',
-    body: JSON.stringify({ name: 'Brown Rice', categoryId } satisfies CreateProduct),
-  })
+  return api<ItemResponse<Product>>("/products", {
+    method: "POST",
+    body: JSON.stringify({
+      name: "Brown Rice",
+      categoryId,
+    } satisfies CreateProduct),
+  });
 }
 
 async function receiveStock(inventoryId: number) {
   const transaction = await api<ItemResponse<InventoryTransaction>>(
     `/inventory/${inventoryId}/transactions`,
     {
-      method: 'POST',
+      method: "POST",
       body: JSON.stringify({
-        transactionType: 'addition',
+        transactionType: "addition",
         quantityChange: 12,
-        reason: 'Donation received',
+        reason: "Donation received",
       } satisfies CreateTransaction),
     },
-  )
-  const stock = await api<ItemResponse<Inventory>>(`/inventory/${inventoryId}`)
-  return { transaction: transaction.data, stock: stock.data }
+  );
+  const stock = await api<ItemResponse<Inventory>>(`/inventory/${inventoryId}`);
+  return { transaction: transaction.data, stock: stock.data };
 }
 ```
 

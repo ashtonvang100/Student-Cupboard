@@ -4,13 +4,13 @@ on:
   push:
     branches: "**"
     paths:
-        - "backend/**"
-        - ".github/workflows/backend-ci.yml"
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
   pull_request:
     branches: main
     paths:
-        - "backend/**"
-        - ".github/workflows/backend-ci.yml"
+      - "backend/**"
+      - ".github/workflows/backend-ci.yml"
 
 permissions:
   contents: read
@@ -41,7 +41,7 @@ jobs:
 
     env:
       TEST_DATABASE_URL: postgresql://cupboard_test:test_only_password@127.0.0.1:5432/student_cupboard_test
-      REQUIRE_TEST_DATABASE: '1'
+      REQUIRE_TEST_DATABASE: "1"
 
     steps:
       - name: Checkout repository

@@ -143,12 +143,8 @@
           "name": "inventory_product_id_products_id_fk",
           "tableFrom": "inventory",
           "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["product_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -158,9 +154,7 @@
         "inventory_product_id_unique": {
           "name": "inventory_product_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "product_id"
-          ]
+          "columns": ["product_id"]
         }
       },
       "policies": {},
@@ -261,12 +255,8 @@
           "name": "inventory_transactions_product_id_products_id_fk",
           "tableFrom": "inventory_transactions",
           "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["product_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -380,12 +370,8 @@
           "name": "products_category_id_categories_id_fk",
           "tableFrom": "products",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -395,9 +381,7 @@
         "products_barcode_unique": {
           "name": "products_barcode_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "barcode"
-          ]
+          "columns": ["barcode"]
         }
       },
       "policies": {},

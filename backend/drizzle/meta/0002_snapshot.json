@@ -143,12 +143,8 @@
           "name": "inventory_product_id_products_id_fk",
           "tableFrom": "inventory",
           "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["product_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -158,9 +154,7 @@
         "inventory_product_id_unique": {
           "name": "inventory_product_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "product_id"
-          ]
+          "columns": ["product_id"]
         }
       },
       "policies": {},
@@ -228,12 +222,8 @@
           "name": "inventory_area_counts_product_id_products_id_fk",
           "tableFrom": "inventory_area_counts",
           "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["product_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -241,12 +231,8 @@
           "name": "inventory_area_counts_scan_id_inventory_scans_id_fk",
           "tableFrom": "inventory_area_counts",
           "tableTo": "inventory_scans",
-          "columnsFrom": [
-            "scan_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["scan_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -254,10 +240,7 @@
       "compositePrimaryKeys": {
         "inventory_area_counts_product_id_area_pk": {
           "name": "inventory_area_counts_product_id_area_pk",
-          "columns": [
-            "product_id",
-            "area"
-          ]
+          "columns": ["product_id", "area"]
         }
       },
       "uniqueConstraints": {},
@@ -401,9 +384,7 @@
         "inventory_scans_fingerprint_unique": {
           "name": "inventory_scans_fingerprint_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "fingerprint"
-          ]
+          "columns": ["fingerprint"]
         }
       },
       "policies": {},
@@ -515,12 +496,8 @@
           "name": "inventory_transactions_product_id_products_id_fk",
           "tableFrom": "inventory_transactions",
           "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["product_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         },
@@ -528,12 +505,8 @@
           "name": "inventory_transactions_scan_id_inventory_scans_id_fk",
           "tableFrom": "inventory_transactions",
           "tableTo": "inventory_scans",
-          "columnsFrom": [
-            "scan_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["scan_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -596,12 +569,8 @@
           "name": "product_nutrition_product_id_products_id_fk",
           "tableFrom": "product_nutrition",
           "tableTo": "products",
-          "columnsFrom": [
-            "product_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["product_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -609,12 +578,8 @@
           "name": "product_nutrition_scan_id_inventory_scans_id_fk",
           "tableFrom": "product_nutrition",
           "tableTo": "inventory_scans",
-          "columnsFrom": [
-            "scan_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["scan_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -731,12 +696,8 @@
           "name": "products_category_id_categories_id_fk",
           "tableFrom": "products",
           "tableTo": "categories",
-          "columnsFrom": [
-            "category_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["category_id"],
+          "columnsTo": ["id"],
           "onDelete": "restrict",
           "onUpdate": "no action"
         }
@@ -746,9 +707,7 @@
         "products_barcode_unique": {
           "name": "products_barcode_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "barcode"
-          ]
+          "columns": ["barcode"]
         }
       },
       "policies": {},

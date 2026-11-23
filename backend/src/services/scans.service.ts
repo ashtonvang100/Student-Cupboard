@@ -331,18 +331,16 @@ export class ScansService {
             .update(inventory)
             .set({ quantity })
             .where(eq(inventory.id, stock!.id));
-          await tx
-            .insert(inventoryTransactions)
-            .values({
-              productId: productId!,
-              scanId: id,
-              actorId,
-              previousQuantity: stock!.quantity,
-              newQuantity: quantity,
-              quantityChange: delta,
-              transactionType: "adjustment",
-              reason: `Approved scan of ${scan.area}`,
-            });
+          await tx.insert(inventoryTransactions).values({
+            productId: productId!,
+            scanId: id,
+            actorId,
+            previousQuantity: stock!.quantity,
+            newQuantity: quantity,
+            quantityChange: delta,
+            transactionType: "adjustment",
+            reason: `Approved scan of ${scan.area}`,
+          });
         }
         await tx
           .insert(inventoryAreaCounts)

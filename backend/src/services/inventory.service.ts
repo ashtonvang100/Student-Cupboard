@@ -80,17 +80,15 @@ export class InventoryService {
         .where(eq(inventory.id, id))
         .returning();
       if (delta !== 0)
-        await tx
-          .insert(inventoryTransactions)
-          .values({
-            productId: current.productId,
-            transactionType: "adjustment",
-            quantityChange: delta,
-            reason: reason!,
-            actorId,
-            previousQuantity: current.quantity,
-            newQuantity: row!.quantity,
-          });
+        await tx.insert(inventoryTransactions).values({
+          productId: current.productId,
+          transactionType: "adjustment",
+          quantityChange: delta,
+          reason: reason!,
+          actorId,
+          previousQuantity: current.quantity,
+          newQuantity: row!.quantity,
+        });
       return row!;
     });
   }

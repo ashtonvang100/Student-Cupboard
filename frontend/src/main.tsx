@@ -1,52 +1,1075 @@
-import React, {useState,useEffect,useRef} from 'react';
-import {createRoot} from 'react-dom/client';
-import {Home,Compass,ShoppingBasket,Bell,User,Search,Heart,History,ChevronRight,ArrowRight,ArrowUp,ArrowLeft,X,Leaf,Camera,LogOut,Check,Upload,MessageCircle,Info,RefreshCw} from 'lucide-react';
-import {demoProducts,categories,categoryImages,images,Product} from './data';
-import {availability,validateImages,canApprove} from './domain.mjs';
-import {config,isDemo as initialDemo,getCatalog,request} from './api';
-import {Connection} from './Connection';
-import {LiveScan} from './LiveScan';
-type Page = 'home'|'browse'|'chat'|'updates'|'profile'|'scan';
-type ScanItem = {name:string;quantity:number;reviewed:boolean;excluded:boolean};
-const read = (key:string):string[] => {try{const value=JSON.parse(localStorage.getItem(key)||'[]');return Array.isArray(value)?value.filter((v:unknown)=>typeof v==='string'):[]}catch{return []}};
-const save = (key:string,value:string[]) => {try{localStorage.setItem(key,JSON.stringify(value))}catch{}};
-const nav = [{id:'home',label:'Home',icon:Home},{id:'browse',label:'Explore',icon:Compass},{id:'chat',label:'FoodGenie',icon:MessageCircle},{id:'updates',label:'Updates',icon:Bell},{id:'profile',label:'Profile',icon:User}] as const;
-const imageFallback=(e:React.SyntheticEvent<HTMLImageElement>)=>{e.currentTarget.onerror=null;e.currentTarget.src='/food-placeholder.svg'};
-function App(){
- const [isDemo,setIsDemo]=useState(initialDemo);
- const refreshCatalog=async()=>{setLoading(true);setError('');try{setProducts(await getCatalog(token))}catch(e){setError((e as Error).message);throw e}finally{setLoading(false)}};
- const connected=(nextToken:string,rows:Product[])=>{setToken(nextToken);setProducts(rows);setIsDemo(false);setEntered(true);setPage('home');setError('');setMessages([{role:'assistant',text:'The backend is connected for inventory and scanning. This repository does not include a chat service.'}])};
- const [entered,setEntered]=useState(isDemo); const [page,setPage]=useState<Page>('home'); const [products,setProducts]=useState<Product[]>(isDemo?demoProducts:[]); const [loading,setLoading]=useState(false); const [error,setError]=useState(''); const [token,setToken]=useState('');
- const [query,setQuery]=useState(''); const [category,setCategory]=useState('All'); const [filter,setFilter]=useState('all'); const [favorites,setFavorites]=useState<string[]>(read('cupboard-favorites')); const [history,setHistory]=useState<string[]>(read('cupboard-history')); const [detail,setDetail]=useState<Product|null>(null); const dialog=useRef<HTMLDialogElement>(null); const [toast,setToast]=useState('');
- const [messages,setMessages]=useState<{role:string;text:string}[]>([{role:'assistant',text:isDemo?'Hi, I’m FoodGenie. 👋\nI can help you explore the sample cupboard and find a little meal inspiration. What sounds good?':'The chat interface is ready. A chatbot API is not documented in the current backend.'}]); const [draft,setDraft]=useState(''); const chatEnd=useRef<HTMLDivElement>(null);
- const [files,setFiles]=useState<File[]>([]); const [area,setArea]=useState(''); const [scanError,setScanError]=useState(''); const [scan,setScan]=useState<ScanItem[]|null>(null); const [approved,setApproved]=useState(false); const [checking,setChecking]=useState(false); const [health,setHealth]=useState('');
- useEffect(()=>{if(!toast)return;const timer=setTimeout(()=>setToast(''),3500);return()=>clearTimeout(timer)},[toast]);
- useEffect(()=>{save('cupboard-favorites',favorites)},[favorites]); useEffect(()=>{save('cupboard-history',history)},[history]);
- useEffect(()=>{if(detail)dialog.current?.showModal();else dialog.current?.close()},[detail]);
- useEffect(()=>{chatEnd.current?.scrollIntoView({block:'nearest'})},[messages,page]);
- useEffect(()=>{if(isDemo||!entered)return;const controller=new AbortController();setLoading(true);setError('');getCatalog(token,controller.signal).then(setProducts).catch(e=>{if(e.name!=='AbortError')setError(e.message)}).finally(()=>setLoading(false));return()=>controller.abort()},[entered,token,isDemo]);
- const status=(p:Product)=>availability(p,Date.now(),config.staleAfterHours);
- const go=(p:Page)=>{setPage(p);setFilter('all');setQuery('');setCategory('All');window.scrollTo(0,0)};
- const open=(p:Product)=>{setDetail(p);setHistory(h=>[p.id,...h.filter(id=>id!==p.id)].slice(0,30))};
- const favorite=(id:string)=>setFavorites(v=>v.includes(id)?v.filter(x=>x!==id):[...v,id]);
- const shownCategories=isDemo?categories:[...new Set(products.map(p=>p.category))];
- const nutrient=(n:number|null,unit='')=>n===null?'—':`${n}${unit}`;
- const visible=products.filter(p=>p.name.toLowerCase().includes(query.toLowerCase())&&(category==='All'||p.category===category)&&(filter==='all'||(filter==='favorites'?favorites:history).includes(p.id)));
- const chat=(text:string)=>{if(!text.trim())return;setDraft('');const current=products.filter(p=>status(p).current);let answer='';if(!isDemo) answer='The current backend does not document a chatbot endpoint. Connect a chat service before using live meal suggestions.';else if(/protein|calorie|macro|meal|breakfast|lunch|eat/i.test(text))answer='Sample meal idea: oats with sliced apple. Both are available in this demo.\n\nUsing the illustrative values: ½ cup oats + 1 medium apple = 245 calories and 5.5 g protein. This may not meet your goal.\n\nThis is a fixed demo example, not a personalized AI calculation. Live suggestions must use verified backend nutrition.';else answer=`In the sample cupboard, you can find: ${current.map(p=>p.name.toLowerCase()).join(', ')}.\n\nThese are demo items. Live shelf availability will appear after the backend is connected.`;setMessages(v=>[...v,{role:'user',text:text.trim()},{role:'assistant',text:answer}])};
- const card=(p:Product)=><article className="card" key={p.id}><button className="card-open" onClick={()=>open(p)}><img onError={imageFallback} src={p.image} alt={p.name} loading="lazy"/><div className="card-content"><span className="subtle">Student Cupboard · {p.category}</span><h3>{p.name}</h3><div className="card-bottom"><span>Free</span><span className={`status ${status(p).current?'':'unknown'}`}>{status(p).label}</span></div></div></button><button className={`favorite ${favorites.includes(p.id)?'saved':''}`} aria-label={`${favorites.includes(p.id)?'Remove':'Save'} ${p.name} ${favorites.includes(p.id)?'from':'to'} favorites`} aria-pressed={favorites.includes(p.id)} onClick={()=>favorite(p.id)}><Heart/></button></article>;
- const brand=<div className="brand"><span className="brand-mark"><ShoppingBasket/></span><span>student cupboard<small>FRESNO STATE</small></span></div>;
- if(!entered)return <div className="auth"><div className="auth-art"><img onError={imageFallback} src={images.hero} alt="Fresh produce at a food market"/><div><span className="eyebrow" style={{color:'#e8eedf'}}>A LITTLE SUPPORT. A LOT OF POSSIBILITY.</span><h2>Good food.<br/>One less thing<br/>to worry about.</h2><p>Your campus cupboard, a little closer.</p></div></div><main className="auth-main"><div className="auth-inner">{brand}<h1>Welcome to your cupboard</h1><p>Find pantry favorites and a little inspiration for your next meal.</p><form onSubmit={e=>{e.preventDefault();setEntered(true)}}>{!isDemo&&<label className="field">Staff access token<input type="password" autoComplete="off" value={token} onChange={e=>setToken(e.target.value)} required placeholder="Enter your staff access token"/></label>}<button className="primary">{isDemo?'Explore the demo':'Continue with staff access'}<ArrowRight size={16}/></button></form><Connection onConnect={connected}/><div className="divider">student access</div><button className="secondary" disabled>Campus sign-in · coming soon</button><p className="auth-note">{isDemo?'You’re viewing a demo. No account is created and no personal information is collected.':'Student sign-in and Google / Apple authentication are not available in the documented backend. Staff tokens stay in memory for this session.'}</p></div></main></div>;
- return <><div className="shell"><aside className="sidebar">{brand}<nav className="nav" aria-label="Main navigation">{nav.map(n=><button key={n.id} className={page===n.id?'active':''} onClick={()=>go(n.id)}><n.icon/>{n.label}</button>)}</nav><div className="sidebar-foot"><Leaf size={20}/><strong>A little food. A lot of care.</strong>For our Fresno State community.<button className="text-link" style={{marginTop:18}} onClick={()=>go('scan')}><Camera size={15}/>Staff photo workflow</button></div></aside><main className="workspace"><header className="topbar"><div><span className="eyebrow">THE AMENDOLA FAMILY STUDENT CUPBOARD</span><h1>{({home:'Good food starts here.',browse:'Find your next favorite.',chat:'Meet your meal companion.',updates:'Your cupboard updates.',profile:'Make yourself at home.',scan:'A fresh look at the shelves.'})[page]}</h1></div><div className="top-actions">{isDemo&&<span className="demo-tag">Demo mode</span>}<button className="icon-button" aria-label="View updates" onClick={()=>go('updates')}><Bell/></button><button className="avatar" aria-label="Open profile" onClick={()=>go('profile')}>SC</button></div></header>
- {(page==='home'||page==='browse')&&<><label className="search"><Search/><input aria-label="Search pantry items" placeholder="Search the cupboard" value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button aria-label="Clear search" onClick={()=>setQuery('')}><X size={17}/></button>}</label><div className="toolbar"><div className="chips"><button className={`chip ${filter==='favorites'?'selected':''}`} onClick={()=>setFilter(filter==='favorites'?'all':'favorites')} aria-pressed={filter==='favorites'}><Heart/>Favorites{favorites.length>0&&` · ${favorites.length}`}</button><button className={`chip ${filter==='history'?'selected':''}`} onClick={()=>setFilter(filter==='history'?'all':'history')} aria-pressed={filter==='history'}><History/>Recently viewed</button></div><span className="subtle">A pantry for every Bulldog.</span></div>
- {page==='home'&&!query&&filter==='all'&&category==='All'&&<section className="hero"><div className="hero-copy"><span className="eyebrow">YOUR CAMPUS. YOUR CUPBOARD.</span><h2>A full plate.<br/>A fresh start.</h2><p>Find everyday essentials and fresh inspiration. Here for you, always free.</p><button className="text-link" onClick={()=>go('browse')}>Explore the cupboard<ArrowRight/></button></div><img onError={imageFallback} src={images.hero} alt="A colorful selection of fresh market produce"/></section>}
- <div className="section-heading"><h2>Browse by category</h2><button onClick={()=>setCategory('All')}>View all<ChevronRight/></button></div><div className="categories">{shownCategories.map(c=><button className={`category ${category===c?'selected':''}`} key={c} aria-pressed={category===c} onClick={()=>setCategory(category===c?'All':c)}><img onError={imageFallback} src={categoryImages[c]||'/food-placeholder.svg'} alt=""/>{c}</button>)}</div>
- <div className="section-heading"><h2>{filter==='favorites'?'Your favorites':filter==='history'?'Recently viewed':query?'Search results':category!=='All'?category:page==='home'?'Inside the cupboard':'All pantry items'}</h2><span className="subtle">{visible.length} items{isDemo?' · sample inventory':''}</span></div>{loading?<div className="empty" role="status">Loading the cupboard…</div>:error?<div className="error" role="alert">{error}<button className="text-link" onClick={()=>go('profile')}>Connection settings<ArrowRight/></button></div>:visible.length?<div className="cards">{visible.map(card)}</div>:<div className="empty"><ShoppingBasket/><p>{filter==='favorites'?'Your favorites will feel right at home here. Tap the heart on an item to save it.':filter==='history'?'Open an item to start your browsing history.':'No items found. Try a different search or category.'}</p><button className="text-link" style={{margin:'auto'}} onClick={()=>{setQuery('');setCategory('All');setFilter('all')}}>Browse all items<ArrowRight/></button></div>}
- <div className="notice"><span className="brand-mark"><Leaf/></span><div><strong>A little inspiration for your next meal?</strong><p>Ask FoodGenie what you can make with what’s available.</p></div><button className="text-link" onClick={()=>go('chat')}>Let’s chat<ArrowRight/></button></div><p className="subtle" style={{lineHeight:1.7,marginTop:18}}>{isDemo?'Preview only. Inventory and nutrition shown here are illustrative.':'Availability reflects the last recorded update and can change before your visit.'}</p></>}
- {page==='chat'&&<section className="chat-layout"><div className="chat-header"><span className="brand-mark"><Leaf/></span><div><strong>FoodGenie</strong><small>{isDemo?'Your cupboard companion · demo conversation':'Chat integration pending'}</small></div><button style={{marginLeft:'auto'}} className="chip" onClick={()=>{setMessages(messages.slice(0,1));setToast('Conversation cleared')}}>New chat</button></div><div className="chat-messages" role="log" aria-live="polite"><p className="chat-date">{isDemo?'SAMPLE CONVERSATION · NO AI SERVICE CONNECTED':'STUDENT CUPBOARD'}</p>{messages.map((m,i)=><div className={`bubble ${m.role}`} key={i}>{m.text}</div>)}<div ref={chatEnd}/></div><div className="suggestions">{['What’s available?','A quick breakfast idea','Can I get 50 g of protein?'].map(s=><button key={s} onClick={()=>chat(s)}>{s}</button>)}</div><form className="composer" onSubmit={e=>{e.preventDefault();chat(draft)}}><input aria-label="Message FoodGenie" placeholder="Ask about food or a meal idea…" value={draft} onChange={e=>setDraft(e.target.value)} maxLength={2000}/><button aria-label="Send message" disabled={!draft.trim()}><ArrowUp size={19}/></button></form></section>}
- {page==='updates'&&<div className="panel"><Bell/><h2>You’re all caught up.</h2><p>There are no live notifications to show. Availability and update times appear on each item’s detail page.</p><div className="notice"><Info/><p>{isDemo?'This preview uses sample inventory. No live stock or restock alerts are connected.':'The backend overview does not document a notification endpoint.'}</p></div><button className="primary" style={{marginTop:20}} onClick={()=>go('browse')}>Browse the cupboard<ArrowRight size={16}/></button></div>}
- {page==='profile'&&<div className="panel"><span className="avatar">SC</span><h2>{isDemo?'Welcome, guest.':'Staff session'}</h2><p>{isDemo?'Explore at your own pace. Your saved favorites stay on this device.':'Your staff token is kept only in memory and is cleared when you leave this session.'}</p><div className="notice"><Info/><p>{isDemo?'The backend is not deployed yet. This is a fully navigable frontend preview with sample content.':'Products, categories, and inventory load from the staff-authenticated API. All pages are included in browsing and search.'}</p></div><Connection onConnect={connected}/><label className="field">Backend connection<input value={config.apiBaseUrl||'Not connected · demo mode'} readOnly/></label>{!isDemo&&<><button className="secondary" disabled={loading} onClick={()=>refreshCatalog().catch(()=>{})}>Refresh inventory</button><button className="secondary" disabled={checking} onClick={async()=>{setChecking(true);setHealth('');try{await request('/health');setHealth('Backend health check succeeded.')}catch(e){setHealth((e as Error).message)}finally{setChecking(false)}}}>{checking?'Checking…':'Check connection'}</button><p role="status">{health}</p></>}<div style={{display:'flex',gap:10,flexWrap:'wrap',marginTop:22}}><button className="secondary" onClick={()=>go('scan')}><Camera size={16}/> Staff photo workflow</button><button className="secondary" onClick={()=>{setFavorites([]);setHistory([]);setToast('Saved favorites and history cleared')}}>Clear saved browsing</button><button className="primary" onClick={()=>{setToken('');setEntered(false);setProducts(isDemo?demoProducts:[]);setPage('home');setDetail(null)}}><LogOut size={16}/>{isDemo?'View welcome screen':'Sign out'}</button></div></div>}
- {!isDemo&&<div hidden={page!=='scan'}><LiveScan key={`${config.apiBaseUrl}:${token}`} token={token} products={products} onApproved={refreshCatalog}/></div>}
- {page==='scan'&&isDemo&&<div className="panel"><Camera/><h2>Update a shelf, one photo at a time.</h2><p>Upload photos of one storage area, review the detected items, and approve the results. Inventory changes only after staff approval.</p><div className="notice"><Info/><p>{isDemo?'Demo workflow: photos stay in this browser. Sample detections are not AI analysis and never change real inventory.':'The upload and review endpoints must be confirmed from INVENTORY_SCANNING.md before live scanning is enabled.'}</p></div><label className="field">Storage area<input placeholder="e.g. pantry-shelf-a" value={area} onChange={e=>{setArea(e.target.value);setScan(null);setApproved(false)}} disabled={!!scan}/></label><div className="upload"><Upload/><label className="field">Choose 1–5 shelf photos<input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={!!scan} onChange={e=>{const next=Array.from(e.target.files||[]);setScanError(validateImages(next));setFiles(next);setScan(null);setApproved(false)}}/></label><p>JPEG, PNG, or WebP · 8 MiB per photo<br/>24 MiB total</p>{files.map((f,i)=><p key={i}>{f.name} · {(f.size/1024/1024).toFixed(1)} MiB</p>)}</div>{scanError&&<p className="error" role="alert">{scanError}</p>}{!scan&&<button className="primary" style={{marginTop:20}} disabled={!isDemo||!area.trim()||!!validateImages(files)} onClick={()=>{setScan([{name:'Fresh apples',quantity:8,reviewed:false,excluded:false},{name:'Whole wheat bread',quantity:3,reviewed:false,excluded:false}]);setApproved(false)}}>Preview sample scan<ArrowRight size={16}/></button>}{scan&&<><h2>{approved?'Demo review completed':'Review every detected item'}</h2><p>{approved?'No inventory was changed. The live backend will reconcile approved counts for this area, including first-scan baseline quantities.':'These are sample detections. Confirm or exclude every item. In the live workflow, first scans also need the quantity already included in inventory.'}</p>{scan.map((item,i)=><div className="notice" key={i} style={{alignItems:'flex-start'}}><div style={{flex:1}}><strong>{item.name}</strong><label className="field" style={{margin:'10px 0'}}>Count<input type="number" min="0" step="1" value={item.quantity} disabled={approved||item.excluded} onChange={e=>setScan(scan.map((s,j)=>j===i?{...s,quantity:Number(e.target.value),reviewed:false}:s))}/></label><label style={{fontSize:12}}><input type="checkbox" checked={item.excluded} disabled={approved} onChange={e=>setScan(scan.map((s,j)=>j===i?{...s,excluded:e.target.checked,reviewed:e.target.checked}:s))}/> Exclude this item</label></div><button className="chip" disabled={approved||item.excluded} onClick={()=>setScan(scan.map((s,j)=>j===i?{...s,reviewed:!s.reviewed}:s))}>{item.reviewed?<Check size={15}/>:null}{item.reviewed?'Reviewed':'Confirm'}</button></div>)}<div style={{display:'flex',gap:10,marginTop:20}}><button className="primary" disabled={!canApprove(scan)||approved} onClick={()=>{setApproved(true);setToast('Demo review complete. No inventory changed.')}}>{approved?'Demo completed':'Complete demo review'}</button><button className="secondary" onClick={()=>{setScan(null);setFiles([]);setApproved(false)}}>Start over</button></div></>}</div>}
- </main></div><nav className="bottom-nav" aria-label="Mobile navigation">{nav.map(n=><button key={n.id} className={page===n.id?'active':''} onClick={()=>go(n.id)} aria-current={page===n.id?'page':undefined}><n.icon/>{n.label}</button>)}</nav><dialog ref={dialog} onCancel={()=>setDetail(null)} onClick={e=>{if(e.target===dialog.current)setDetail(null)}} onClose={()=>setDetail(null)} aria-labelledby="detail-title">{detail&&<><img onError={imageFallback} className="detail-img" src={detail.image} alt={detail.name}/><button className="close" onClick={()=>setDetail(null)} aria-label="Close item details"><X size={18}/></button><div className="detail-body"><span className="eyebrow">{detail.category} · STUDENT CUPBOARD</span><h2 id="detail-title">{detail.name}</h2><span className={`status ${status(detail).current?'':'unknown'}`}>{status(detail).label}</span>{!isDemo&&<p className="subtle">Recorded stock: {detail.quantity} · Shelf observation not provided by the catalog API.{detail.inventoryUpdatedAt&&` Inventory record updated: ${new Date(detail.inventoryUpdatedAt).toLocaleString()}`}</p>}<p className="subtle">{detail.updatedAt?`Last update: ${new Date(detail.updatedAt).toLocaleString()}`:'No shelf update recorded'}</p><p style={{fontSize:13,lineHeight:1.7,color:'#747c6d'}}>{detail.description}</p><h3 style={{fontSize:14,marginTop:24}}>Nutrition facts</h3><p className="subtle">Per {detail.serving}{isDemo?' · illustrative values':''}</p>{detail.nutrition?<div className="nutrition">{[['Calories',nutrient(detail.nutrition.calories)],['Protein',nutrient(detail.nutrition.protein,'g')],['Carbs',nutrient(detail.nutrition.carbs,'g')],['Fat',nutrient(detail.nutrition.fat,'g')]].map(([k,v])=><div key={k}><strong>{v}</strong><small>{k}</small></div>)}</div>:<p className="notice">Nutrition information has not been recorded.</p>}<button className="primary" style={{width:'100%'}} onClick={()=>favorite(detail.id)}><Heart size={16}/>{favorites.includes(detail.id)?'Saved to favorites':'Save to favorites'}</button><p className="subtle" style={{lineHeight:1.6}}>{isDemo?'Sample information for preview purposes.':'Availability can change before your visit. Check packaging for current nutrition and allergens.'}</p></div></>}</dialog>{toast&&<div role="status" id="toast" style={{display:'block'}}>{toast}</div>}</>;
+import React, { useState, useEffect, useRef } from "react";
+import { createRoot } from "react-dom/client";
+import {
+  Home,
+  Compass,
+  ShoppingBasket,
+  Bell,
+  User,
+  Search,
+  Heart,
+  History,
+  ChevronRight,
+  ArrowRight,
+  ArrowUp,
+  ArrowLeft,
+  X,
+  Leaf,
+  Camera,
+  LogOut,
+  Check,
+  Upload,
+  MessageCircle,
+  Info,
+  RefreshCw,
+} from "lucide-react";
+import {
+  demoProducts,
+  categories,
+  categoryImages,
+  images,
+  Product,
+} from "./data";
+import { availability, validateImages, canApprove } from "./domain.mjs";
+import { config, isDemo as initialDemo, getCatalog, request } from "./api";
+import { Connection } from "./Connection";
+import { LiveScan } from "./LiveScan";
+type Page = "home" | "browse" | "chat" | "updates" | "profile" | "scan";
+type ScanItem = {
+  name: string;
+  quantity: number;
+  reviewed: boolean;
+  excluded: boolean;
+};
+const read = (key: string): string[] => {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || "[]");
+    return Array.isArray(value)
+      ? value.filter((v: unknown) => typeof v === "string")
+      : [];
+  } catch {
+    return [];
+  }
+};
+const save = (key: string, value: string[]) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+};
+const nav = [
+  { id: "home", label: "Home", icon: Home },
+  { id: "browse", label: "Explore", icon: Compass },
+  { id: "chat", label: "FoodGenie", icon: MessageCircle },
+  { id: "updates", label: "Updates", icon: Bell },
+  { id: "profile", label: "Profile", icon: User },
+] as const;
+const imageFallback = (e: React.SyntheticEvent<HTMLImageElement>) => {
+  e.currentTarget.onerror = null;
+  e.currentTarget.src = "/food-placeholder.svg";
+};
+function App() {
+  const [isDemo, setIsDemo] = useState(initialDemo);
+  const refreshCatalog = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setProducts(await getCatalog(token));
+    } catch (e) {
+      setError((e as Error).message);
+      throw e;
+    } finally {
+      setLoading(false);
+    }
+  };
+  const connected = (nextToken: string, rows: Product[]) => {
+    setToken(nextToken);
+    setProducts(rows);
+    setIsDemo(false);
+    setEntered(true);
+    setPage("home");
+    setError("");
+    setMessages([
+      {
+        role: "assistant",
+        text: "The backend is connected for inventory and scanning. This repository does not include a chat service.",
+      },
+    ]);
+  };
+  const [entered, setEntered] = useState(isDemo);
+  const [page, setPage] = useState<Page>("home");
+  const [products, setProducts] = useState<Product[]>(
+    isDemo ? demoProducts : [],
+  );
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [token, setToken] = useState("");
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("All");
+  const [filter, setFilter] = useState("all");
+  const [favorites, setFavorites] = useState<string[]>(
+    read("cupboard-favorites"),
+  );
+  const [history, setHistory] = useState<string[]>(read("cupboard-history"));
+  const [detail, setDetail] = useState<Product | null>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const [toast, setToast] = useState("");
+  const [messages, setMessages] = useState<{ role: string; text: string }[]>([
+    {
+      role: "assistant",
+      text: isDemo
+        ? "Hi, I’m FoodGenie. 👋\nI can help you explore the sample cupboard and find a little meal inspiration. What sounds good?"
+        : "The chat interface is ready. A chatbot API is not documented in the current backend.",
+    },
+  ]);
+  const [draft, setDraft] = useState("");
+  const chatEnd = useRef<HTMLDivElement>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [area, setArea] = useState("");
+  const [scanError, setScanError] = useState("");
+  const [scan, setScan] = useState<ScanItem[] | null>(null);
+  const [approved, setApproved] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [health, setHealth] = useState("");
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(""), 3500);
+    return () => clearTimeout(timer);
+  }, [toast]);
+  useEffect(() => {
+    save("cupboard-favorites", favorites);
+  }, [favorites]);
+  useEffect(() => {
+    save("cupboard-history", history);
+  }, [history]);
+  useEffect(() => {
+    if (detail) dialog.current?.showModal();
+    else dialog.current?.close();
+  }, [detail]);
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ block: "nearest" });
+  }, [messages, page]);
+  useEffect(() => {
+    if (isDemo || !entered) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    getCatalog(token, controller.signal)
+      .then(setProducts)
+      .catch((e) => {
+        if (e.name !== "AbortError") setError(e.message);
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [entered, token, isDemo]);
+  const status = (p: Product) =>
+    availability(p, Date.now(), config.staleAfterHours);
+  const go = (p: Page) => {
+    setPage(p);
+    setFilter("all");
+    setQuery("");
+    setCategory("All");
+    window.scrollTo(0, 0);
+  };
+  const open = (p: Product) => {
+    setDetail(p);
+    setHistory((h) => [p.id, ...h.filter((id) => id !== p.id)].slice(0, 30));
+  };
+  const favorite = (id: string) =>
+    setFavorites((v) =>
+      v.includes(id) ? v.filter((x) => x !== id) : [...v, id],
+    );
+  const shownCategories = isDemo
+    ? categories
+    : [...new Set(products.map((p) => p.category))];
+  const nutrient = (n: number | null, unit = "") =>
+    n === null ? "—" : `${n}${unit}`;
+  const visible = products.filter(
+    (p) =>
+      p.name.toLowerCase().includes(query.toLowerCase()) &&
+      (category === "All" || p.category === category) &&
+      (filter === "all" ||
+        (filter === "favorites" ? favorites : history).includes(p.id)),
+  );
+  const chat = (text: string) => {
+    if (!text.trim()) return;
+    setDraft("");
+    const current = products.filter((p) => status(p).current);
+    let answer = "";
+    if (!isDemo)
+      answer =
+        "The current backend does not document a chatbot endpoint. Connect a chat service before using live meal suggestions.";
+    else if (/protein|calorie|macro|meal|breakfast|lunch|eat/i.test(text))
+      answer =
+        "Sample meal idea: oats with sliced apple. Both are available in this demo.\n\nUsing the illustrative values: ½ cup oats + 1 medium apple = 245 calories and 5.5 g protein. This may not meet your goal.\n\nThis is a fixed demo example, not a personalized AI calculation. Live suggestions must use verified backend nutrition.";
+    else
+      answer = `In the sample cupboard, you can find: ${current.map((p) => p.name.toLowerCase()).join(", ")}.\n\nThese are demo items. Live shelf availability will appear after the backend is connected.`;
+    setMessages((v) => [
+      ...v,
+      { role: "user", text: text.trim() },
+      { role: "assistant", text: answer },
+    ]);
+  };
+  const card = (p: Product) => (
+    <article className="card" key={p.id}>
+      <button className="card-open" onClick={() => open(p)}>
+        <img
+          onError={imageFallback}
+          src={p.image}
+          alt={p.name}
+          loading="lazy"
+        />
+        <div className="card-content">
+          <span className="subtle">Student Cupboard · {p.category}</span>
+          <h3>{p.name}</h3>
+          <div className="card-bottom">
+            <span>Free</span>
+            <span className={`status ${status(p).current ? "" : "unknown"}`}>
+              {status(p).label}
+            </span>
+          </div>
+        </div>
+      </button>
+      <button
+        className={`favorite ${favorites.includes(p.id) ? "saved" : ""}`}
+        aria-label={`${favorites.includes(p.id) ? "Remove" : "Save"} ${p.name} ${favorites.includes(p.id) ? "from" : "to"} favorites`}
+        aria-pressed={favorites.includes(p.id)}
+        onClick={() => favorite(p.id)}
+      >
+        <Heart />
+      </button>
+    </article>
+  );
+  const brand = (
+    <div className="brand">
+      <span className="brand-mark">
+        <ShoppingBasket />
+      </span>
+      <span>
+        student cupboard<small>FRESNO STATE</small>
+      </span>
+    </div>
+  );
+  if (!entered)
+    return (
+      <div className="auth">
+        <div className="auth-art">
+          <img
+            onError={imageFallback}
+            src={images.hero}
+            alt="Fresh produce at a food market"
+          />
+          <div>
+            <span className="eyebrow" style={{ color: "#e8eedf" }}>
+              A LITTLE SUPPORT. A LOT OF POSSIBILITY.
+            </span>
+            <h2>
+              Good food.
+              <br />
+              One less thing
+              <br />
+              to worry about.
+            </h2>
+            <p>Your campus cupboard, a little closer.</p>
+          </div>
+        </div>
+        <main className="auth-main">
+          <div className="auth-inner">
+            {brand}
+            <h1>Welcome to your cupboard</h1>
+            <p>
+              Find pantry favorites and a little inspiration for your next meal.
+            </p>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setEntered(true);
+              }}
+            >
+              {!isDemo && (
+                <label className="field">
+                  Staff access token
+                  <input
+                    type="password"
+                    autoComplete="off"
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    required
+                    placeholder="Enter your staff access token"
+                  />
+                </label>
+              )}
+              <button className="primary">
+                {isDemo ? "Explore the demo" : "Continue with staff access"}
+                <ArrowRight size={16} />
+              </button>
+            </form>
+            <Connection onConnect={connected} />
+            <div className="divider">student access</div>
+            <button className="secondary" disabled>
+              Campus sign-in · coming soon
+            </button>
+            <p className="auth-note">
+              {isDemo
+                ? "You’re viewing a demo. No account is created and no personal information is collected."
+                : "Student sign-in and Google / Apple authentication are not available in the documented backend. Staff tokens stay in memory for this session."}
+            </p>
+          </div>
+        </main>
+      </div>
+    );
+  return (
+    <>
+      <div className="shell">
+        <aside className="sidebar">
+          {brand}
+          <nav className="nav" aria-label="Main navigation">
+            {nav.map((n) => (
+              <button
+                key={n.id}
+                className={page === n.id ? "active" : ""}
+                onClick={() => go(n.id)}
+              >
+                <n.icon />
+                {n.label}
+              </button>
+            ))}
+          </nav>
+          <div className="sidebar-foot">
+            <Leaf size={20} />
+            <strong>A little food. A lot of care.</strong>For our Fresno State
+            community.
+            <button
+              className="text-link"
+              style={{ marginTop: 18 }}
+              onClick={() => go("scan")}
+            >
+              <Camera size={15} />
+              Staff photo workflow
+            </button>
+          </div>
+        </aside>
+        <main className="workspace">
+          <header className="topbar">
+            <div>
+              <span className="eyebrow">
+                THE AMENDOLA FAMILY STUDENT CUPBOARD
+              </span>
+              <h1>
+                {
+                  {
+                    home: "Good food starts here.",
+                    browse: "Find your next favorite.",
+                    chat: "Meet your meal companion.",
+                    updates: "Your cupboard updates.",
+                    profile: "Make yourself at home.",
+                    scan: "A fresh look at the shelves.",
+                  }[page]
+                }
+              </h1>
+            </div>
+            <div className="top-actions">
+              {isDemo && <span className="demo-tag">Demo mode</span>}
+              <button
+                className="icon-button"
+                aria-label="View updates"
+                onClick={() => go("updates")}
+              >
+                <Bell />
+              </button>
+              <button
+                className="avatar"
+                aria-label="Open profile"
+                onClick={() => go("profile")}
+              >
+                SC
+              </button>
+            </div>
+          </header>
+          {(page === "home" || page === "browse") && (
+            <>
+              <label className="search">
+                <Search />
+                <input
+                  aria-label="Search pantry items"
+                  placeholder="Search the cupboard"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+                {query && (
+                  <button
+                    aria-label="Clear search"
+                    onClick={() => setQuery("")}
+                  >
+                    <X size={17} />
+                  </button>
+                )}
+              </label>
+              <div className="toolbar">
+                <div className="chips">
+                  <button
+                    className={`chip ${filter === "favorites" ? "selected" : ""}`}
+                    onClick={() =>
+                      setFilter(filter === "favorites" ? "all" : "favorites")
+                    }
+                    aria-pressed={filter === "favorites"}
+                  >
+                    <Heart />
+                    Favorites{favorites.length > 0 && ` · ${favorites.length}`}
+                  </button>
+                  <button
+                    className={`chip ${filter === "history" ? "selected" : ""}`}
+                    onClick={() =>
+                      setFilter(filter === "history" ? "all" : "history")
+                    }
+                    aria-pressed={filter === "history"}
+                  >
+                    <History />
+                    Recently viewed
+                  </button>
+                </div>
+                <span className="subtle">A pantry for every Bulldog.</span>
+              </div>
+              {page === "home" &&
+                !query &&
+                filter === "all" &&
+                category === "All" && (
+                  <section className="hero">
+                    <div className="hero-copy">
+                      <span className="eyebrow">
+                        YOUR CAMPUS. YOUR CUPBOARD.
+                      </span>
+                      <h2>
+                        A full plate.
+                        <br />A fresh start.
+                      </h2>
+                      <p>
+                        Find everyday essentials and fresh inspiration. Here for
+                        you, always free.
+                      </p>
+                      <button
+                        className="text-link"
+                        onClick={() => go("browse")}
+                      >
+                        Explore the cupboard
+                        <ArrowRight />
+                      </button>
+                    </div>
+                    <img
+                      onError={imageFallback}
+                      src={images.hero}
+                      alt="A colorful selection of fresh market produce"
+                    />
+                  </section>
+                )}
+              <div className="section-heading">
+                <h2>Browse by category</h2>
+                <button onClick={() => setCategory("All")}>
+                  View all
+                  <ChevronRight />
+                </button>
+              </div>
+              <div className="categories">
+                {shownCategories.map((c) => (
+                  <button
+                    className={`category ${category === c ? "selected" : ""}`}
+                    key={c}
+                    aria-pressed={category === c}
+                    onClick={() => setCategory(category === c ? "All" : c)}
+                  >
+                    <img
+                      onError={imageFallback}
+                      src={categoryImages[c] || "/food-placeholder.svg"}
+                      alt=""
+                    />
+                    {c}
+                  </button>
+                ))}
+              </div>
+              <div className="section-heading">
+                <h2>
+                  {filter === "favorites"
+                    ? "Your favorites"
+                    : filter === "history"
+                      ? "Recently viewed"
+                      : query
+                        ? "Search results"
+                        : category !== "All"
+                          ? category
+                          : page === "home"
+                            ? "Inside the cupboard"
+                            : "All pantry items"}
+                </h2>
+                <span className="subtle">
+                  {visible.length} items{isDemo ? " · sample inventory" : ""}
+                </span>
+              </div>
+              {loading ? (
+                <div className="empty" role="status">
+                  Loading the cupboard…
+                </div>
+              ) : error ? (
+                <div className="error" role="alert">
+                  {error}
+                  <button className="text-link" onClick={() => go("profile")}>
+                    Connection settings
+                    <ArrowRight />
+                  </button>
+                </div>
+              ) : visible.length ? (
+                <div className="cards">{visible.map(card)}</div>
+              ) : (
+                <div className="empty">
+                  <ShoppingBasket />
+                  <p>
+                    {filter === "favorites"
+                      ? "Your favorites will feel right at home here. Tap the heart on an item to save it."
+                      : filter === "history"
+                        ? "Open an item to start your browsing history."
+                        : "No items found. Try a different search or category."}
+                  </p>
+                  <button
+                    className="text-link"
+                    style={{ margin: "auto" }}
+                    onClick={() => {
+                      setQuery("");
+                      setCategory("All");
+                      setFilter("all");
+                    }}
+                  >
+                    Browse all items
+                    <ArrowRight />
+                  </button>
+                </div>
+              )}
+              <div className="notice">
+                <span className="brand-mark">
+                  <Leaf />
+                </span>
+                <div>
+                  <strong>A little inspiration for your next meal?</strong>
+                  <p>Ask FoodGenie what you can make with what’s available.</p>
+                </div>
+                <button className="text-link" onClick={() => go("chat")}>
+                  Let’s chat
+                  <ArrowRight />
+                </button>
+              </div>
+              <p className="subtle" style={{ lineHeight: 1.7, marginTop: 18 }}>
+                {isDemo
+                  ? "Preview only. Inventory and nutrition shown here are illustrative."
+                  : "Availability reflects the last recorded update and can change before your visit."}
+              </p>
+            </>
+          )}
+          {page === "chat" && (
+            <section className="chat-layout">
+              <div className="chat-header">
+                <span className="brand-mark">
+                  <Leaf />
+                </span>
+                <div>
+                  <strong>FoodGenie</strong>
+                  <small>
+                    {isDemo
+                      ? "Your cupboard companion · demo conversation"
+                      : "Chat integration pending"}
+                  </small>
+                </div>
+                <button
+                  style={{ marginLeft: "auto" }}
+                  className="chip"
+                  onClick={() => {
+                    setMessages(messages.slice(0, 1));
+                    setToast("Conversation cleared");
+                  }}
+                >
+                  New chat
+                </button>
+              </div>
+              <div className="chat-messages" role="log" aria-live="polite">
+                <p className="chat-date">
+                  {isDemo
+                    ? "SAMPLE CONVERSATION · NO AI SERVICE CONNECTED"
+                    : "STUDENT CUPBOARD"}
+                </p>
+                {messages.map((m, i) => (
+                  <div className={`bubble ${m.role}`} key={i}>
+                    {m.text}
+                  </div>
+                ))}
+                <div ref={chatEnd} />
+              </div>
+              <div className="suggestions">
+                {[
+                  "What’s available?",
+                  "A quick breakfast idea",
+                  "Can I get 50 g of protein?",
+                ].map((s) => (
+                  <button key={s} onClick={() => chat(s)}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+              <form
+                className="composer"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  chat(draft);
+                }}
+              >
+                <input
+                  aria-label="Message FoodGenie"
+                  placeholder="Ask about food or a meal idea…"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  maxLength={2000}
+                />
+                <button aria-label="Send message" disabled={!draft.trim()}>
+                  <ArrowUp size={19} />
+                </button>
+              </form>
+            </section>
+          )}
+          {page === "updates" && (
+            <div className="panel">
+              <Bell />
+              <h2>You’re all caught up.</h2>
+              <p>
+                There are no live notifications to show. Availability and update
+                times appear on each item’s detail page.
+              </p>
+              <div className="notice">
+                <Info />
+                <p>
+                  {isDemo
+                    ? "This preview uses sample inventory. No live stock or restock alerts are connected."
+                    : "The backend overview does not document a notification endpoint."}
+                </p>
+              </div>
+              <button
+                className="primary"
+                style={{ marginTop: 20 }}
+                onClick={() => go("browse")}
+              >
+                Browse the cupboard
+                <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
+          {page === "profile" && (
+            <div className="panel">
+              <span className="avatar">SC</span>
+              <h2>{isDemo ? "Welcome, guest." : "Staff session"}</h2>
+              <p>
+                {isDemo
+                  ? "Explore at your own pace. Your saved favorites stay on this device."
+                  : "Your staff token is kept only in memory and is cleared when you leave this session."}
+              </p>
+              <div className="notice">
+                <Info />
+                <p>
+                  {isDemo
+                    ? "The backend is not deployed yet. This is a fully navigable frontend preview with sample content."
+                    : "Products, categories, and inventory load from the staff-authenticated API. All pages are included in browsing and search."}
+                </p>
+              </div>
+              <Connection onConnect={connected} />
+              <label className="field">
+                Backend connection
+                <input
+                  value={config.apiBaseUrl || "Not connected · demo mode"}
+                  readOnly
+                />
+              </label>
+              {!isDemo && (
+                <>
+                  <button
+                    className="secondary"
+                    disabled={loading}
+                    onClick={() => refreshCatalog().catch(() => {})}
+                  >
+                    Refresh inventory
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={checking}
+                    onClick={async () => {
+                      setChecking(true);
+                      setHealth("");
+                      try {
+                        await request("/health");
+                        setHealth("Backend health check succeeded.");
+                      } catch (e) {
+                        setHealth((e as Error).message);
+                      } finally {
+                        setChecking(false);
+                      }
+                    }}
+                  >
+                    {checking ? "Checking…" : "Check connection"}
+                  </button>
+                  <p role="status">{health}</p>
+                </>
+              )}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  flexWrap: "wrap",
+                  marginTop: 22,
+                }}
+              >
+                <button className="secondary" onClick={() => go("scan")}>
+                  <Camera size={16} /> Staff photo workflow
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => {
+                    setFavorites([]);
+                    setHistory([]);
+                    setToast("Saved favorites and history cleared");
+                  }}
+                >
+                  Clear saved browsing
+                </button>
+                <button
+                  className="primary"
+                  onClick={() => {
+                    setToken("");
+                    setEntered(false);
+                    setProducts(isDemo ? demoProducts : []);
+                    setPage("home");
+                    setDetail(null);
+                  }}
+                >
+                  <LogOut size={16} />
+                  {isDemo ? "View welcome screen" : "Sign out"}
+                </button>
+              </div>
+            </div>
+          )}
+          {!isDemo && (
+            <div hidden={page !== "scan"}>
+              <LiveScan
+                key={`${config.apiBaseUrl}:${token}`}
+                token={token}
+                products={products}
+                onApproved={refreshCatalog}
+              />
+            </div>
+          )}
+          {page === "scan" && isDemo && (
+            <div className="panel">
+              <Camera />
+              <h2>Update a shelf, one photo at a time.</h2>
+              <p>
+                Upload photos of one storage area, review the detected items,
+                and approve the results. Inventory changes only after staff
+                approval.
+              </p>
+              <div className="notice">
+                <Info />
+                <p>
+                  {isDemo
+                    ? "Demo workflow: photos stay in this browser. Sample detections are not AI analysis and never change real inventory."
+                    : "The upload and review endpoints must be confirmed from INVENTORY_SCANNING.md before live scanning is enabled."}
+                </p>
+              </div>
+              <label className="field">
+                Storage area
+                <input
+                  placeholder="e.g. pantry-shelf-a"
+                  value={area}
+                  onChange={(e) => {
+                    setArea(e.target.value);
+                    setScan(null);
+                    setApproved(false);
+                  }}
+                  disabled={!!scan}
+                />
+              </label>
+              <div className="upload">
+                <Upload />
+                <label className="field">
+                  Choose 1–5 shelf photos
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    disabled={!!scan}
+                    onChange={(e) => {
+                      const next = Array.from(e.target.files || []);
+                      setScanError(validateImages(next));
+                      setFiles(next);
+                      setScan(null);
+                      setApproved(false);
+                    }}
+                  />
+                </label>
+                <p>
+                  JPEG, PNG, or WebP · 8 MiB per photo
+                  <br />
+                  24 MiB total
+                </p>
+                {files.map((f, i) => (
+                  <p key={i}>
+                    {f.name} · {(f.size / 1024 / 1024).toFixed(1)} MiB
+                  </p>
+                ))}
+              </div>
+              {scanError && (
+                <p className="error" role="alert">
+                  {scanError}
+                </p>
+              )}
+              {!scan && (
+                <button
+                  className="primary"
+                  style={{ marginTop: 20 }}
+                  disabled={!isDemo || !area.trim() || !!validateImages(files)}
+                  onClick={() => {
+                    setScan([
+                      {
+                        name: "Fresh apples",
+                        quantity: 8,
+                        reviewed: false,
+                        excluded: false,
+                      },
+                      {
+                        name: "Whole wheat bread",
+                        quantity: 3,
+                        reviewed: false,
+                        excluded: false,
+                      },
+                    ]);
+                    setApproved(false);
+                  }}
+                >
+                  Preview sample scan
+                  <ArrowRight size={16} />
+                </button>
+              )}
+              {scan && (
+                <>
+                  <h2>
+                    {approved
+                      ? "Demo review completed"
+                      : "Review every detected item"}
+                  </h2>
+                  <p>
+                    {approved
+                      ? "No inventory was changed. The live backend will reconcile approved counts for this area, including first-scan baseline quantities."
+                      : "These are sample detections. Confirm or exclude every item. In the live workflow, first scans also need the quantity already included in inventory."}
+                  </p>
+                  {scan.map((item, i) => (
+                    <div
+                      className="notice"
+                      key={i}
+                      style={{ alignItems: "flex-start" }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <strong>{item.name}</strong>
+                        <label className="field" style={{ margin: "10px 0" }}>
+                          Count
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={item.quantity}
+                            disabled={approved || item.excluded}
+                            onChange={(e) =>
+                              setScan(
+                                scan.map((s, j) =>
+                                  j === i
+                                    ? {
+                                        ...s,
+                                        quantity: Number(e.target.value),
+                                        reviewed: false,
+                                      }
+                                    : s,
+                                ),
+                              )
+                            }
+                          />
+                        </label>
+                        <label style={{ fontSize: 12 }}>
+                          <input
+                            type="checkbox"
+                            checked={item.excluded}
+                            disabled={approved}
+                            onChange={(e) =>
+                              setScan(
+                                scan.map((s, j) =>
+                                  j === i
+                                    ? {
+                                        ...s,
+                                        excluded: e.target.checked,
+                                        reviewed: e.target.checked,
+                                      }
+                                    : s,
+                                ),
+                              )
+                            }
+                          />{" "}
+                          Exclude this item
+                        </label>
+                      </div>
+                      <button
+                        className="chip"
+                        disabled={approved || item.excluded}
+                        onClick={() =>
+                          setScan(
+                            scan.map((s, j) =>
+                              j === i ? { ...s, reviewed: !s.reviewed } : s,
+                            ),
+                          )
+                        }
+                      >
+                        {item.reviewed ? <Check size={15} /> : null}
+                        {item.reviewed ? "Reviewed" : "Confirm"}
+                      </button>
+                    </div>
+                  ))}
+                  <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+                    <button
+                      className="primary"
+                      disabled={!canApprove(scan) || approved}
+                      onClick={() => {
+                        setApproved(true);
+                        setToast("Demo review complete. No inventory changed.");
+                      }}
+                    >
+                      {approved ? "Demo completed" : "Complete demo review"}
+                    </button>
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        setScan(null);
+                        setFiles([]);
+                        setApproved(false);
+                      }}
+                    >
+                      Start over
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+      <nav className="bottom-nav" aria-label="Mobile navigation">
+        {nav.map((n) => (
+          <button
+            key={n.id}
+            className={page === n.id ? "active" : ""}
+            onClick={() => go(n.id)}
+            aria-current={page === n.id ? "page" : undefined}
+          >
+            <n.icon />
+            {n.label}
+          </button>
+        ))}
+      </nav>
+      <dialog
+        ref={dialog}
+        onCancel={() => setDetail(null)}
+        onClick={(e) => {
+          if (e.target === dialog.current) setDetail(null);
+        }}
+        onClose={() => setDetail(null)}
+        aria-labelledby="detail-title"
+      >
+        {detail && (
+          <>
+            <img
+              onError={imageFallback}
+              className="detail-img"
+              src={detail.image}
+              alt={detail.name}
+            />
+            <button
+              className="close"
+              onClick={() => setDetail(null)}
+              aria-label="Close item details"
+            >
+              <X size={18} />
+            </button>
+            <div className="detail-body">
+              <span className="eyebrow">
+                {detail.category} · STUDENT CUPBOARD
+              </span>
+              <h2 id="detail-title">{detail.name}</h2>
+              <span
+                className={`status ${status(detail).current ? "" : "unknown"}`}
+              >
+                {status(detail).label}
+              </span>
+              {!isDemo && (
+                <p className="subtle">
+                  Recorded stock: {detail.quantity} · Shelf observation not
+                  provided by the catalog API.
+                  {detail.inventoryUpdatedAt &&
+                    ` Inventory record updated: ${new Date(detail.inventoryUpdatedAt).toLocaleString()}`}
+                </p>
+              )}
+              <p className="subtle">
+                {detail.updatedAt
+                  ? `Last update: ${new Date(detail.updatedAt).toLocaleString()}`
+                  : "No shelf update recorded"}
+              </p>
+              <p style={{ fontSize: 13, lineHeight: 1.7, color: "#747c6d" }}>
+                {detail.description}
+              </p>
+              <h3 style={{ fontSize: 14, marginTop: 24 }}>Nutrition facts</h3>
+              <p className="subtle">
+                Per {detail.serving}
+                {isDemo ? " · illustrative values" : ""}
+              </p>
+              {detail.nutrition ? (
+                <div className="nutrition">
+                  {[
+                    ["Calories", nutrient(detail.nutrition.calories)],
+                    ["Protein", nutrient(detail.nutrition.protein, "g")],
+                    ["Carbs", nutrient(detail.nutrition.carbs, "g")],
+                    ["Fat", nutrient(detail.nutrition.fat, "g")],
+                  ].map(([k, v]) => (
+                    <div key={k}>
+                      <strong>{v}</strong>
+                      <small>{k}</small>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="notice">
+                  Nutrition information has not been recorded.
+                </p>
+              )}
+              <button
+                className="primary"
+                style={{ width: "100%" }}
+                onClick={() => favorite(detail.id)}
+              >
+                <Heart size={16} />
+                {favorites.includes(detail.id)
+                  ? "Saved to favorites"
+                  : "Save to favorites"}
+              </button>
+              <p className="subtle" style={{ lineHeight: 1.6 }}>
+                {isDemo
+                  ? "Sample information for preview purposes."
+                  : "Availability can change before your visit. Check packaging for current nutrition and allergens."}
+              </p>
+            </div>
+          </>
+        )}
+      </dialog>
+      {toast && (
+        <div role="status" id="toast" style={{ display: "block" }}>
+          {toast}
+        </div>
+      )}
+    </>
+  );
 }
-createRoot(document.getElementById('app')!).render(<App/>);
+createRoot(document.getElementById("app")!).render(<App />);

@@ -10,26 +10,26 @@ Reuse `inventory_scans` for the upload and extraction record. Add four tables fo
 
 ## 2. Current backend architecture findings
 
-| Surface | Verified behavior and relevant limits |
-| --- | --- |
-| Database and migration history | `src/db/index.ts` creates a node-postgres pool and binds the Drizzle schema. `0000_initial_schema.sql` defines categories, products, inventory, and stock transactions. `0001_ai_inventory_scanning.sql` adds scans, area counts, AI nutrition, product size/variation, and nullable audit fields on transactions. `0002_area_expiration.sql` adds a nullable date on the latest area count. The Drizzle journal and snapshots track these migrations. The migration runner refuses existing base application tables without a Drizzle journal. [Schema](src/db/schema.ts), [migrations](drizzle), [migration runner](scripts/migrate.ts) |
-| Products and stock | Products have integer IDs, category FK, nullable brand/size/variation/barcode, a unique barcode, and manual nutrition JSON. Product creation also creates a zero-quantity inventory row transactionally. Stock has one integer total and unit per product. Product reads may include a separate AI nutrition candidate. [Product service](src/services/products.service.ts), [schema](src/db/schema.ts) |
-| Upload and AI | Staff submits multipart `images` and one trimmed, lowercased free-text `area` to `POST /api/inventory/scans` with a UUID `Idempotency-Key`. Sharp validates and normalizes JPEG/PNG/WebP in memory and collapses identical normalized images within the request. OpenAI Responses receives the batch together, with structured output, `store: false`, a 90-second client timeout, and no SDK retries. The model receives neither area context nor prior observations. The DB stores the set fingerprint, analysis JSON, and separately editable review items. It stores no original or normalized image bytes, per-image IDs or hashes, or capture times. [Scan routes](src/routes/scans.ts), [image service](src/services/images.service.ts), [OpenAI service](src/services/openai.service.ts), [scan service](src/services/scans.service.ts) |
-| Matching and upload replay | Matching requires one normalized name/brand/size/variation tuple with compatible barcodes. Barcode is not a standalone lookup. Ambiguity yields null. Two constraints enforce actor/key uniqueness and global fingerprint uniqueness. A same-area exact replay can return the existing row under another key, including failed/rejected rows. Crashes can strand `processing` rows. [Scan service](src/services/scans.service.ts), [scan migration](drizzle/0001_ai_inventory_scanning.sql) |
-| Staff review, approval, rejection | Review edits pending items under a row lock, clearing stale identity-linked fields on changes. Only included, confirmed items with quantities and units can be applied. An existing product's first baseline requires `initialAreaQuantity`. Approval uses a transaction, advisory and row locks, stale checks, and unit/quantity checks. It adds the reviewed local delta to the current stock, upserts the area baseline, writes nonzero adjustment history, and may insert a new product or unverified nutrition. Reapproval returns the approved row. Rejection conditionally updates pending status and reviewer/time without a stock write. Original analysis is preserved. [Scan service](src/services/scans.service.ts) |
-| Area counts and transaction history | `inventory_area_counts` stores one latest approved row per `(product_id, area text)`, with source scan, quantity, expiration, and update time. `GET /api/inventory/:id` includes these rows. Manual quantity PATCH and signed stock transactions update stock and history under a row lock, without updating area baselines. A later approved scan can therefore apply a delta for a change already reflected by a manual transaction. `/history` and `/transactions` read the same product ledger, including nullable legacy audit fields. Missing products during scan approval leave baselines alone. [Inventory service](src/services/inventory.service.ts), [inventory routes](src/routes/inventory.ts) |
-| Routes, access, validation | `createApp` injects DB and optional staff credentials and vision analyzer. Auth guards resource routes under `/api`; health and the root are public. A valid `viewer` token receives 403. There are no area/session/observation routes. Scan analysis/review schemas use Zod and strict shapes with explicit nulls and confidence ranges; product, category, inventory and transaction validators use common strict-key, JSON/media, integral ID, and paging helpers. The global 64 KiB body limit exempts the existing scan upload path, which has its own 26 MiB limit. API errors are sanitized. [App](src/app.ts), [auth](src/middleware/auth.ts), [error handling](src/middleware/error-handler.ts), [validators](src/validators) |
-| Automated tests | Node tests exercise Sharp, matcher, Zod, SDK payloads/errors and staff auth with mocks. PostgreSQL suites apply migrations and cover legacy scan replay, review edits, baseline/delta application, omissions, stale approvals, rollback, nutrition, legacy product/inventory/history, and concurrent removals. No evidence sessions/observations are tested today. CI provisions PostgreSQL 17 and requires the DB suites. [Scan unit tests](tests/scans.test.ts), [scan integration](tests/scans.integration.test.ts), [API integration](tests/api.integration.test.ts), [validation tests](tests/validation.test.ts), [CI](../.github/workflows/backend-ci.yml) |
+| Surface                             | Verified behavior and relevant limits                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Database and migration history      | `src/db/index.ts` creates a node-postgres pool and binds the Drizzle schema. `0000_initial_schema.sql` defines categories, products, inventory, and stock transactions. `0001_ai_inventory_scanning.sql` adds scans, area counts, AI nutrition, product size/variation, and nullable audit fields on transactions. `0002_area_expiration.sql` adds a nullable date on the latest area count. The Drizzle journal and snapshots track these migrations. The migration runner refuses existing base application tables without a Drizzle journal. [Schema](src/db/schema.ts), [migrations](drizzle), [migration runner](scripts/migrate.ts)                                                                                                                                                                                                       |
+| Products and stock                  | Products have integer IDs, category FK, nullable brand/size/variation/barcode, a unique barcode, and manual nutrition JSON. Product creation also creates a zero-quantity inventory row transactionally. Stock has one integer total and unit per product. Product reads may include a separate AI nutrition candidate. [Product service](src/services/products.service.ts), [schema](src/db/schema.ts)                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Upload and AI                       | Staff submits multipart `images` and one trimmed, lowercased free-text `area` to `POST /api/inventory/scans` with a UUID `Idempotency-Key`. Sharp validates and normalizes JPEG/PNG/WebP in memory and collapses identical normalized images within the request. OpenAI Responses receives the batch together, with structured output, `store: false`, a 90-second client timeout, and no SDK retries. The model receives neither area context nor prior observations. The DB stores the set fingerprint, analysis JSON, and separately editable review items. It stores no original or normalized image bytes, per-image IDs or hashes, or capture times. [Scan routes](src/routes/scans.ts), [image service](src/services/images.service.ts), [OpenAI service](src/services/openai.service.ts), [scan service](src/services/scans.service.ts) |
+| Matching and upload replay          | Matching requires one normalized name/brand/size/variation tuple with compatible barcodes. Barcode is not a standalone lookup. Ambiguity yields null. Two constraints enforce actor/key uniqueness and global fingerprint uniqueness. A same-area exact replay can return the existing row under another key, including failed/rejected rows. Crashes can strand `processing` rows. [Scan service](src/services/scans.service.ts), [scan migration](drizzle/0001_ai_inventory_scanning.sql)                                                                                                                                                                                                                                                                                                                                                     |
+| Staff review, approval, rejection   | Review edits pending items under a row lock, clearing stale identity-linked fields on changes. Only included, confirmed items with quantities and units can be applied. An existing product's first baseline requires `initialAreaQuantity`. Approval uses a transaction, advisory and row locks, stale checks, and unit/quantity checks. It adds the reviewed local delta to the current stock, upserts the area baseline, writes nonzero adjustment history, and may insert a new product or unverified nutrition. Reapproval returns the approved row. Rejection conditionally updates pending status and reviewer/time without a stock write. Original analysis is preserved. [Scan service](src/services/scans.service.ts)                                                                                                                 |
+| Area counts and transaction history | `inventory_area_counts` stores one latest approved row per `(product_id, area text)`, with source scan, quantity, expiration, and update time. `GET /api/inventory/:id` includes these rows. Manual quantity PATCH and signed stock transactions update stock and history under a row lock, without updating area baselines. A later approved scan can therefore apply a delta for a change already reflected by a manual transaction. `/history` and `/transactions` read the same product ledger, including nullable legacy audit fields. Missing products during scan approval leave baselines alone. [Inventory service](src/services/inventory.service.ts), [inventory routes](src/routes/inventory.ts)                                                                                                                                    |
+| Routes, access, validation          | `createApp` injects DB and optional staff credentials and vision analyzer. Auth guards resource routes under `/api`; health and the root are public. A valid `viewer` token receives 403. There are no area/session/observation routes. Scan analysis/review schemas use Zod and strict shapes with explicit nulls and confidence ranges; product, category, inventory and transaction validators use common strict-key, JSON/media, integral ID, and paging helpers. The global 64 KiB body limit exempts the existing scan upload path, which has its own 26 MiB limit. API errors are sanitized. [App](src/app.ts), [auth](src/middleware/auth.ts), [error handling](src/middleware/error-handler.ts), [validators](src/validators)                                                                                                          |
+| Automated tests                     | Node tests exercise Sharp, matcher, Zod, SDK payloads/errors and staff auth with mocks. PostgreSQL suites apply migrations and cover legacy scan replay, review edits, baseline/delta application, omissions, stale approvals, rollback, nutrition, legacy product/inventory/history, and concurrent removals. No evidence sessions/observations are tested today. CI provisions PostgreSQL 17 and requires the DB suites. [Scan unit tests](tests/scans.test.ts), [scan integration](tests/scans.integration.test.ts), [API integration](tests/api.integration.test.ts), [validation tests](tests/validation.test.ts), [CI](../.github/workflows/backend-ci.yml)                                                                                                                                                                               |
 
 ## 3. Current architecture versus proposed architecture
 
-| Concern | Current implementation | Phase 1 recommendation |
-| --- | --- | --- |
-| Location and grouping | One text label per scan | Stable area IDs and an explicit manifest. Full sessions require all active registered areas at opening. Individual sessions select exactly one active area. Multiple uploads per area are allowed. |
-| Historical evidence | Original analysis JSON per legacy scan and mutable review items; current baseline overwrites its predecessor | Append-only observations indexed for new evidence, with immutable raw output and an ordered per-photo manifest. Each device-reported capture time stays separate from server upload time. Legacy snapshots remain available through the existing API. |
-| Coverage and duplicates | Within-upload normalization and a prompt about overlap | Freeze the required-area manifest and derive capture completeness from successful uploads in each area. Preserve model visibility limits and image references. Block exact replay within an area/session. Cross-area or cross-time similarity remains evidence for later analysis. |
-| Applying stock | Explicit human approval applies a local delta and depends on legacy baselines | New scan mode terminates at evidence ready or failure, outside the legacy approval state machine. Existing approved projections and writers retain their current semantics. |
-| Scope from the architecture review | Proposed joint analysis, retained photos, versioned projection, movement and reconciliation records | Phase 1 groups structured evidence and keeps photos transient. Full-session deduplication, movement hypotheses, automatic application, historical AI context, visual comparison, image reprocessing, and student tools follow separately. |
+| Concern                            | Current implementation                                                                                       | Phase 1 recommendation                                                                                                                                                                                                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Location and grouping              | One text label per scan                                                                                      | Stable area IDs and an explicit manifest. Full sessions require all active registered areas at opening. Individual sessions select exactly one active area. Multiple uploads per area are allowed.                                                                                 |
+| Historical evidence                | Original analysis JSON per legacy scan and mutable review items; current baseline overwrites its predecessor | Append-only observations indexed for new evidence, with immutable raw output and an ordered per-photo manifest. Each device-reported capture time stays separate from server upload time. Legacy snapshots remain available through the existing API.                              |
+| Coverage and duplicates            | Within-upload normalization and a prompt about overlap                                                       | Freeze the required-area manifest and derive capture completeness from successful uploads in each area. Preserve model visibility limits and image references. Block exact replay within an area/session. Cross-area or cross-time similarity remains evidence for later analysis. |
+| Applying stock                     | Explicit human approval applies a local delta and depends on legacy baselines                                | New scan mode terminates at evidence ready or failure, outside the legacy approval state machine. Existing approved projections and writers retain their current semantics.                                                                                                        |
+| Scope from the architecture review | Proposed joint analysis, retained photos, versioned projection, movement and reconciliation records          | Phase 1 groups structured evidence and keeps photos transient. Full-session deduplication, movement hypotheses, automatic application, historical AI context, visual comparison, image reprocessing, and student tools follow separately.                                          |
 
 ## 4. Proposed database schema
 
@@ -39,12 +39,12 @@ Reuse `inventory_scans` for the upload and extraction record. Add four tables fo
 
 Canonical photo locations. Coexists with the old text labels in legacy scans and baselines.
 
-| Column | PostgreSQL type | Purpose |
-| --- | --- | --- |
-| `id` | `uuid` PK | Stable location identity |
-| `name` | `varchar(120)` | Staff-visible location label |
-| `archived_at` | `timestamptz` nullable | Exclude from new sessions while preserving history |
-| `created_at` | `timestamptz DEFAULT now()` | Registration timestamp |
+| Column        | PostgreSQL type             | Purpose                                            |
+| ------------- | --------------------------- | -------------------------------------------------- |
+| `id`          | `uuid` PK                   | Stable location identity                           |
+| `name`        | `varchar(120)`              | Staff-visible location label                       |
+| `archived_at` | `timestamptz` nullable      | Exclude from new sessions while preserving history |
+| `created_at`  | `timestamptz DEFAULT now()` | Registration timestamp                             |
 
 Trim names, reject blanks and control characters, and enforce case-insensitive uniqueness with a unique expression index on `lower(btrim(name))`, including archived rows. Let PostgreSQL determine conflicts so app and DB case folding agree. Name changes preserve IDs. Start with flat, bounded physical locations such as “Pantry / Shelf A”. Register mutually exclusive counting locations as an operational convention. Use this table's PK and name index initially. Defer hierarchies, view definitions, and alias records until there is an established way to identify overlapping scopes and legacy aliases.
 
@@ -52,14 +52,14 @@ Trim names, reject blanks and control characters, and enforce case-insensitive u
 
 A capture group and its lifecycle, independent of inventory acceptance.
 
-| Column | PostgreSQL type | Purpose |
-| --- | --- | --- |
-| `id` | `uuid` PK | Session ID |
-| `mode` | `varchar(16)` | `full` or `individual`, checked in PostgreSQL |
-| `actor_id` | `varchar(200)` | Staff member who opened the session |
-| `idempotency_key` | `uuid` | Creation key, unique with `actor_id` |
-| `created_at` | `timestamptz DEFAULT now()` | Server time when capture grouping was opened |
-| `closed_at` | `timestamptz` nullable | Set once when capture closes; check it is at or after creation |
+| Column            | PostgreSQL type             | Purpose                                                        |
+| ----------------- | --------------------------- | -------------------------------------------------------------- |
+| `id`              | `uuid` PK                   | Session ID                                                     |
+| `mode`            | `varchar(16)`               | `full` or `individual`, checked in PostgreSQL                  |
+| `actor_id`        | `varchar(200)`              | Staff member who opened the session                            |
+| `idempotency_key` | `uuid`                      | Creation key, unique with `actor_id`                           |
+| `created_at`      | `timestamptz DEFAULT now()` | Server time when capture grouping was opened                   |
+| `closed_at`       | `timestamptz` nullable      | Set once when capture closes; check it is at or after creation |
 
 Open/closed is derived from `closed_at`. A composite unique index on `(actor_id, idempotency_key)` supports replay. There is no session-list route in the initial contract, so defer an index for lifecycle listing. Store required areas once in the manifest. Create the session and all memberships atomically. Full mode snapshots all areas with `archived_at IS NULL` in a single database statement within that transaction. A later registration, archive, restore or rename never changes existing membership. Individual mode uses one validated active area. Reject creation with no active areas for full mode. Use the stored manifest on replay.
 
@@ -67,10 +67,10 @@ Open/closed is derived from `closed_at`. A composite unique index on `(actor_id,
 
 One row per required area, including areas that receive no upload. Full and individual sessions use the same relationship.
 
-| Column | PostgreSQL type | Purpose |
-| --- | --- | --- |
+| Column       | PostgreSQL type                           | Purpose       |
+| ------------ | ----------------------------------------- | ------------- |
 | `session_id` | `uuid` FK to `inventory_scan_sessions.id` | Capture group |
-| `area_id` | `uuid` FK to `inventory_areas.id` | Intended area |
+| `area_id`    | `uuid` FK to `inventory_areas.id`         | Intended area |
 
 Composite PK `(session_id, area_id)`; add `(area_id, session_id)` for reverse lookup and FK operations. Derive capture status from associated scans. A required area counts as captured when it has at least one `evidence_ready` scan, including a valid extraction with zero items. A missing, pending, or failed batch alone does not satisfy the requirement. Derive session `captureCompleteness` as `complete` only when every manifest row meets the criterion, and `incomplete` otherwise. Query manifest and scan state from a consistent snapshot. Closure is independent and may record a closed, incomplete session. Closing resolves expired claims under the same lock used for finalization and prevents new claims. This stabilizes capture completeness after close. These fields describe capture workflow progress. Physical coverage and accepted stock remain separate. Coverage and visibility warnings stay with the source scans.
 
@@ -78,17 +78,17 @@ Composite PK `(session_id, area_id)`; add `(area_id, session_id)` for reverse lo
 
 Keep the current scan ID, actor/key, fingerprint, analysis, items, reviewer fields and audit timestamps. Use one scan row per normalized upload batch for one manifest area. Keep successful analysis immutable. Add evidence-specific provenance and a separate terminal success state.
 
-| Column or change | PostgreSQL type | Rule |
-| --- | --- | --- |
-| `session_id`, `area_id` | `uuid` each, nullable for legacy | Paired nullability; composite FK to `inventory_session_areas(session_id, area_id)` |
-| Existing `area` | `varchar(120)`, relax to nullable | Required for legacy scans, null for evidence scans. Resolve new area labels via FK. |
-| Existing `status` | `varchar(30)` | Legacy statuses stay `processing/pending_review/approved/rejected/failed`; evidence permits only `processing/evidence_ready/failed`. Add DB checks keyed by association. |
-| `uploaded_at` | `timestamptz`, nullable for legacy | Required for evidence. Server timestamp when the original multipart body was received and parsed, before normalization. Replays preserve the original timestamp. |
-| `last_known_capture_at` | `timestamptz` nullable | Maximum device-reported timestamp from the photo manifest, for batch ordering only. Null when none is known. Derive on insert and preserve on retries. |
-| `input_manifest` | `jsonb`, nullable for legacy | Required for evidence. Versioned metadata in multipart file order. Each entry carries an image ID, upload ordinal, device capture time or null, source, normalized SHA-256, dimensions, and a possible duplicate reference. Contains no bytes, file URLs, or raw EXIF. |
-| `model_id`, `prompt_version`, `output_schema_version` | `varchar(120)`, `varchar(40)`, `varchar(40)`, nullable for legacy | Required for evidence. Set from the server-side analyzer configuration at claim time. `model_id` is the requested model identifier, so an alias may not identify immutable weights. |
-| `attempt_number` | `integer`, nullable for legacy | Evidence starts at 1; increment when reusing a failed or expired claim. Check positive. |
-| `claim_expires_at`, `analysis_finished_at` | `timestamptz` each, nullable | Set expiry only while evidence is processing; set finish time for the current terminal outcome. Preserve the original `created_at` across retries. |
+| Column or change                                      | PostgreSQL type                                                   | Rule                                                                                                                                                                                                                                                                   |
+| ----------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `session_id`, `area_id`                               | `uuid` each, nullable for legacy                                  | Paired nullability; composite FK to `inventory_session_areas(session_id, area_id)`                                                                                                                                                                                     |
+| Existing `area`                                       | `varchar(120)`, relax to nullable                                 | Required for legacy scans, null for evidence scans. Resolve new area labels via FK.                                                                                                                                                                                    |
+| Existing `status`                                     | `varchar(30)`                                                     | Legacy statuses stay `processing/pending_review/approved/rejected/failed`; evidence permits only `processing/evidence_ready/failed`. Add DB checks keyed by association.                                                                                               |
+| `uploaded_at`                                         | `timestamptz`, nullable for legacy                                | Required for evidence. Server timestamp when the original multipart body was received and parsed, before normalization. Replays preserve the original timestamp.                                                                                                       |
+| `last_known_capture_at`                               | `timestamptz` nullable                                            | Maximum device-reported timestamp from the photo manifest, for batch ordering only. Null when none is known. Derive on insert and preserve on retries.                                                                                                                 |
+| `input_manifest`                                      | `jsonb`, nullable for legacy                                      | Required for evidence. Versioned metadata in multipart file order. Each entry carries an image ID, upload ordinal, device capture time or null, source, normalized SHA-256, dimensions, and a possible duplicate reference. Contains no bytes, file URLs, or raw EXIF. |
+| `model_id`, `prompt_version`, `output_schema_version` | `varchar(120)`, `varchar(40)`, `varchar(40)`, nullable for legacy | Required for evidence. Set from the server-side analyzer configuration at claim time. `model_id` is the requested model identifier, so an alias may not identify immutable weights.                                                                                    |
+| `attempt_number`                                      | `integer`, nullable for legacy                                    | Evidence starts at 1; increment when reusing a failed or expired claim. Check positive.                                                                                                                                                                                |
+| `claim_expires_at`, `analysis_finished_at`            | `timestamptz` each, nullable                                      | Set expiry only while evidence is processing; set finish time for the current terminal outcome. Preserve the original `created_at` across retries.                                                                                                                     |
 
 Example manifest shape. The actual normalized hash is a 64-character lowercase hexadecimal value.
 
@@ -97,8 +97,26 @@ Example manifest shape. The actual normalized hash is a 64-character lowercase h
   "version": 1,
   "normalizationVersion": "jpeg-v1",
   "images": [
-    {"imageId":"i1","uploadOrdinal":0,"capturedAt":"2026-11-18T17:04:00.000Z","captureTimeSource":"device_reported","normalizedSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","width":2400,"height":1600,"duplicateOfImageId":null},
-    {"imageId":"i2","uploadOrdinal":1,"capturedAt":null,"captureTimeSource":"unknown","normalizedSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","width":1600,"height":1200,"duplicateOfImageId":null}
+    {
+      "imageId": "i1",
+      "uploadOrdinal": 0,
+      "capturedAt": "2026-11-18T17:04:00.000Z",
+      "captureTimeSource": "device_reported",
+      "normalizedSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "width": 2400,
+      "height": 1600,
+      "duplicateOfImageId": null
+    },
+    {
+      "imageId": "i2",
+      "uploadOrdinal": 1,
+      "capturedAt": null,
+      "captureTimeSource": "unknown",
+      "normalizedSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "width": 1600,
+      "height": 1200,
+      "duplicateOfImageId": null
+    }
   ]
 }
 ```
@@ -111,17 +129,17 @@ Keep the unique `(actor_id, idempotency_key)` index across both modes. Replace t
 
 One immutable row per detected item in a successful evidence extraction. Retain distinct detections of the same catalog product and expose overlap uncertainty.
 
-| Column | PostgreSQL type | Purpose |
-| --- | --- | --- |
-| `id` | `uuid` PK | Stable observation ID |
-| `scan_id` | `uuid` FK to `inventory_scans.id` | Source upload and provenance |
-| `item_index` | `integer` | Zero-based index into immutable, versioned `analysis.items` |
-| `product_id` | `integer` nullable FK to `products.id` | Unique backend match when supported |
-| `match_status` | `varchar(24)` | `matched`, `unmatched`, `ambiguous`, or `conflict` |
-| `quantity_kind` | `varchar(16)` | `visible_count`, `estimate`, or `unknown` |
-| `quantity`, `quantity_lower`, `quantity_upper` | `integer` each, nullable | Local observation estimate/count and optional estimate bounds |
-| `unit` | `varchar(50)` nullable | Observed count unit, independent of the accepted stock unit |
-| `identity_confidence`, `quantity_confidence` | `double precision` each, nullable | Separate model scores where supplied, checked within [0,1] |
+| Column                                         | PostgreSQL type                        | Purpose                                                       |
+| ---------------------------------------------- | -------------------------------------- | ------------------------------------------------------------- |
+| `id`                                           | `uuid` PK                              | Stable observation ID                                         |
+| `scan_id`                                      | `uuid` FK to `inventory_scans.id`      | Source upload and provenance                                  |
+| `item_index`                                   | `integer`                              | Zero-based index into immutable, versioned `analysis.items`   |
+| `product_id`                                   | `integer` nullable FK to `products.id` | Unique backend match when supported                           |
+| `match_status`                                 | `varchar(24)`                          | `matched`, `unmatched`, `ambiguous`, or `conflict`            |
+| `quantity_kind`                                | `varchar(16)`                          | `visible_count`, `estimate`, or `unknown`                     |
+| `quantity`, `quantity_lower`, `quantity_upper` | `integer` each, nullable               | Local observation estimate/count and optional estimate bounds |
+| `unit`                                         | `varchar(50)` nullable                 | Observed count unit, independent of the accepted stock unit   |
+| `identity_confidence`, `quantity_confidence`   | `double precision` each, nullable      | Separate model scores where supplied, checked within [0,1]    |
 
 Unique `(scan_id, item_index)`; check ordinal 0–199 and enforce item existence and version compatibility in the write service. Check match/product consistency, valid enum values, nonnegative quantities, and trimmed unit if supplied. Numeric counts require an observed unit and positive quantity. Phase 1 represents empty extraction at the scan level and stores no zero-product observations. `unknown` has null quantity and bounds; optional bounds apply only to an estimate and must be consistent with it. Enforce app-only inserts in the evidence finalization service; the FK establishes source existence and the service ensures it is a successfully finalized evidence scan within the same transaction. Add `(product_id, scan_id, id)` for product filtering. Join through the scan for area, session, server upload time and versions. Resolve an observation’s `sourceImageIds` from its raw item to the corresponding ordered manifest entries by `(scan_id, image_id)`. Only source images supply photo capture times for that observation, and an observation can cite multiple photos with distinct or unknown times. Keep observed label text, per-image references, warnings, overlap hints and any extracted label attributes in the raw item at `item_index`. The query fields extracted into columns allow indexed reads without duplicating whole JSON items. Defer correction/supersession records until versioned reanalysis is implemented.
 
@@ -161,20 +179,20 @@ Legacy records cannot reliably establish camera capture time or intervals, origi
 
 All paths in this table are relative to `backend/`. These are future changes.
 
-| File | Action and responsibility |
-| --- | --- |
-| `src/db/schema.ts`, `drizzle/0003_*.sql`, `drizzle/0004_*.sql`, `drizzle/meta/0003_snapshot.json`, `drizzle/meta/0004_snapshot.json`, `drizzle/meta/_journal.json` | Extend schema, generate and review migration and metadata. Retain current DB connection factory and migration runner. |
-| `src/app.ts` | Mount area, session and observation routers; pass a separately injectable evidence vision analyzer through app options. Reuse global staff auth, error handling, and the current multipart exemption. Register fixed resource routes ahead of the generic inventory router. |
-| `src/routes/inventory-areas.ts`, `src/validators/inventory-areas.ts`, `src/services/inventory-areas.service.ts` | Create, list, rename and archive areas. Validate JSON and pagination; have the service own name normalization, archive transitions and DTOs. |
-| `src/routes/scan-sessions.ts`, `src/validators/scan-sessions.ts`, `src/services/scan-sessions.service.ts` | Create/replay active-area snapshots or individual manifests, read capture completeness and close sessions. Centralize session row locking and owner/area checks for use by evidence upload. |
-| `src/routes/scans.ts` | Parse two mutually exclusive multipart shapes at the existing URL. Dispatch legacy form to `ScansService`, evidence form to the new service. Retain the existing legacy responses and upload limits. |
-| `src/services/scans.service.ts` | Scope legacy reads, replay lookup, review, approval and rejection to legacy rows. Project legacy response fields explicitly. Reuse the existing identity normalization in a small shared matcher if it can preserve legacy behavior. |
-| `src/services/images.service.ts` | Expose normalized dimensions and a normalization version to evidence capture. Keep original multipart photo ordinals and assign scan-local IDs in that order. Produce a metadata entry per file while sending normalized duplicate images to AI only once. Preserve legacy normalization, input ordering and fingerprint semantics. |
-| `src/services/evidence-vision.service.ts`, `src/services/openai.service.ts` | Add an injectable evidence analyzer and versioned prompt with stable image labels preceding each image. Reuse the current OpenAI client construction and error translation where compatible. Keep legacy analysis types and status semantics. Use explicit structured-output version names and keep all image text untrusted. |
-| `src/services/evidence-scans.service.ts`, `src/validators/evidence-scans.ts` | Own multipart photo metadata validation, server upload time, fingerprint/manifest creation, replay, claim expiry, extraction validation, product matching, and transactional evidence finalization. Keep vision outside transactions and restrict writes to scans and observations. |
-| `src/routes/observations.ts`, `src/validators/observations.ts`, `src/services/observations.service.ts` | Validate query filters and paging. Join observations to ready scans and map the raw item at its ordinal into stable, version-aware DTOs. Provide the observation insert mapping for evidence finalization against its transaction handle. |
-| `tests/evidence.test.ts`, `tests/evidence.integration.test.ts`, `tests/evidence-migration.integration.test.ts` | Add mocks and real-database tests described below. Extend `tests/scans.test.ts` and `tests/scans.integration.test.ts` for cross-mode route and response regression. |
-| `docs/API.md`, `docs/INVENTORY_SCANNING.md` | Document the two upload forms, status codes, capture and review behavior, retry instructions and image policy. |
+| File                                                                                                                                                               | Action and responsibility                                                                                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/db/schema.ts`, `drizzle/0003_*.sql`, `drizzle/0004_*.sql`, `drizzle/meta/0003_snapshot.json`, `drizzle/meta/0004_snapshot.json`, `drizzle/meta/_journal.json` | Extend schema, generate and review migration and metadata. Retain current DB connection factory and migration runner.                                                                                                                                                                                                               |
+| `src/app.ts`                                                                                                                                                       | Mount area, session and observation routers; pass a separately injectable evidence vision analyzer through app options. Reuse global staff auth, error handling, and the current multipart exemption. Register fixed resource routes ahead of the generic inventory router.                                                         |
+| `src/routes/inventory-areas.ts`, `src/validators/inventory-areas.ts`, `src/services/inventory-areas.service.ts`                                                    | Create, list, rename and archive areas. Validate JSON and pagination; have the service own name normalization, archive transitions and DTOs.                                                                                                                                                                                        |
+| `src/routes/scan-sessions.ts`, `src/validators/scan-sessions.ts`, `src/services/scan-sessions.service.ts`                                                          | Create/replay active-area snapshots or individual manifests, read capture completeness and close sessions. Centralize session row locking and owner/area checks for use by evidence upload.                                                                                                                                         |
+| `src/routes/scans.ts`                                                                                                                                              | Parse two mutually exclusive multipart shapes at the existing URL. Dispatch legacy form to `ScansService`, evidence form to the new service. Retain the existing legacy responses and upload limits.                                                                                                                                |
+| `src/services/scans.service.ts`                                                                                                                                    | Scope legacy reads, replay lookup, review, approval and rejection to legacy rows. Project legacy response fields explicitly. Reuse the existing identity normalization in a small shared matcher if it can preserve legacy behavior.                                                                                                |
+| `src/services/images.service.ts`                                                                                                                                   | Expose normalized dimensions and a normalization version to evidence capture. Keep original multipart photo ordinals and assign scan-local IDs in that order. Produce a metadata entry per file while sending normalized duplicate images to AI only once. Preserve legacy normalization, input ordering and fingerprint semantics. |
+| `src/services/evidence-vision.service.ts`, `src/services/openai.service.ts`                                                                                        | Add an injectable evidence analyzer and versioned prompt with stable image labels preceding each image. Reuse the current OpenAI client construction and error translation where compatible. Keep legacy analysis types and status semantics. Use explicit structured-output version names and keep all image text untrusted.       |
+| `src/services/evidence-scans.service.ts`, `src/validators/evidence-scans.ts`                                                                                       | Own multipart photo metadata validation, server upload time, fingerprint/manifest creation, replay, claim expiry, extraction validation, product matching, and transactional evidence finalization. Keep vision outside transactions and restrict writes to scans and observations.                                                 |
+| `src/routes/observations.ts`, `src/validators/observations.ts`, `src/services/observations.service.ts`                                                             | Validate query filters and paging. Join observations to ready scans and map the raw item at its ordinal into stable, version-aware DTOs. Provide the observation insert mapping for evidence finalization against its transaction handle.                                                                                           |
+| `tests/evidence.test.ts`, `tests/evidence.integration.test.ts`, `tests/evidence-migration.integration.test.ts`                                                     | Add mocks and real-database tests described below. Extend `tests/scans.test.ts` and `tests/scans.integration.test.ts` for cross-mode route and response regression.                                                                                                                                                                 |
+| `docs/API.md`, `docs/INVENTORY_SCANNING.md`                                                                                                                        | Document the two upload forms, status codes, capture and review behavior, retry instructions and image policy.                                                                                                                                                                                                                      |
 
 Existing auth, inventory mutation, product mutation, and category modules need no feature changes. Use the current error handler and throw named `ApiError` values for expected state conflicts. For PostgreSQL failures, preserve the handler's general behavior and avoid leaking SQL or provider payloads.
 
@@ -194,28 +212,44 @@ Example IDs used below are area `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`, session 
 
 ### Area registration and selection
 
-| Method and route | Request and response examples | Validation and additional errors |
-| --- | --- | --- |
-| `POST /api/inventory/areas` | JSON `{"name":"Pantry / Shelf A"}`. **201** `{"data":{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","name":"Pantry / Shelf A","archivedAt":null,"createdAt":"2026-11-18T17:00:00Z"}}`. | Trim 1–120 characters; reject control characters and extra fields. **400** malformed input; **409 AREA_NAME_CONFLICT** includes a collision with an archived name. |
-| `GET /api/inventory/areas?page=1&limit=20` | No body. **200** `{"data":[{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","name":"Pantry / Shelf A","archivedAt":null,"createdAt":"2026-11-18T17:00:00Z"}],"pagination":{"page":1,"limit":20,"hasMore":false}}`. | Active areas by default; optional `includeArchived=true\|false`. Sort by normalized name then ID. Use current pagination defaults and limits. **400** invalid query. |
-| `PATCH /api/inventory/areas/:areaId` | JSON `{"name":"Pantry / North Shelf"}` or `{"archived":true}`. **200** updated area DTO as above, with updated `name` and/or `archivedAt`. | Allow name and/or a boolean `archived` in a nonempty patch; `false` restores, true on an archived row is idempotent. **400** malformed input; **404 AREA_NOT_FOUND**; **409 AREA_NAME_CONFLICT**. |
+| Method and route                           | Request and response examples                                                                                                                                                                                  | Validation and additional errors                                                                                                                                                                  |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/inventory/areas`                | JSON `{"name":"Pantry / Shelf A"}`. **201** `{"data":{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","name":"Pantry / Shelf A","archivedAt":null,"createdAt":"2026-11-18T17:00:00Z"}}`.                           | Trim 1–120 characters; reject control characters and extra fields. **400** malformed input; **409 AREA_NAME_CONFLICT** includes a collision with an archived name.                                |
+| `GET /api/inventory/areas?page=1&limit=20` | No body. **200** `{"data":[{"id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","name":"Pantry / Shelf A","archivedAt":null,"createdAt":"2026-11-18T17:00:00Z"}],"pagination":{"page":1,"limit":20,"hasMore":false}}`. | Active areas by default; optional `includeArchived=true\|false`. Sort by normalized name then ID. Use current pagination defaults and limits. **400** invalid query.                              |
+| `PATCH /api/inventory/areas/:areaId`       | JSON `{"name":"Pantry / North Shelf"}` or `{"archived":true}`. **200** updated area DTO as above, with updated `name` and/or `archivedAt`.                                                                     | Allow name and/or a boolean `archived` in a nonempty patch; `false` restores, true on an archived row is idempotent. **400** malformed input; **404 AREA_NOT_FOUND**; **409 AREA_NAME_CONFLICT**. |
 
 ### Session lifecycle
 
 **POST `/api/inventory/scan-sessions`** creates the required-area manifest. Send UUID `Idempotency-Key`. For a full session, send this body and let the server snapshot the active area register.
 
 ```json
-{"mode":"full"}
+{ "mode": "full" }
 ```
 
 For a separate individual session, supply the one selected area.
 
 ```json
-{"mode":"individual","areaIds":["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"]}
+{ "mode": "individual", "areaIds": ["aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"] }
 ```
 
 ```json
-{"data":{"id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","mode":"individual","createdAt":"2026-11-18T17:03:00Z","closedAt":null,"captureCompleteness":"incomplete","areas":[{"areaId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","name":"Pantry / Shelf A","captureStatus":"missing","scans":[]}]}}
+{
+  "data": {
+    "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "mode": "individual",
+    "createdAt": "2026-11-18T17:03:00Z",
+    "closedAt": null,
+    "captureCompleteness": "incomplete",
+    "areas": [
+      {
+        "areaId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "name": "Pantry / Shelf A",
+        "captureStatus": "missing",
+        "scans": []
+      }
+    ]
+  }
+}
 ```
 
 Return 201 on creation and 200 on identical replay, with `Location: /api/inventory/scan-sessions/:sessionId`. Use the same response shape for full sessions, with `mode: "full"` and one entry for each area in the server snapshot. Accept exactly one UUID for `individual` and reject an `areaIds` field in `full` mode. A full session can have one active area. A replay returns the stored area set and current status even after the active register changes. Use **400** for shape or mode/cardinality errors, **404 AREA_NOT_FOUND** for an unknown individual area, **409 AREA_ARCHIVED** for selecting an archived individual area, **409 NO_ACTIVE_AREAS** for a full session with no active areas, and **409 IDEMPOTENCY_CONFLICT** for a used key with a different mode or individual area.
@@ -223,7 +257,39 @@ Return 201 on creation and 200 on identical replay, with `Location: /api/invento
 **GET `/api/inventory/scan-sessions/:sessionId`** returns lifecycle, capture completeness and every manifest area, including its scan metadata, with no body. Any staff member can read this response. **200** uses the creation DTO. This example shows the area entry after one successful upload.
 
 ```json
-{"areaId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","name":"Pantry / Shelf A","captureStatus":"has_evidence","scans":[{"id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","status":"evidence_ready","uploadedAt":"2026-11-18T17:05:00Z","analysisFinishedAt":"2026-11-18T17:05:08Z","photos":[{"imageId":"i1","uploadOrdinal":0,"capturedAt":"2026-11-18T17:04:00Z","captureTimeSource":"device_reported","duplicateOfImageId":null},{"imageId":"i2","uploadOrdinal":1,"capturedAt":null,"captureTimeSource":"unknown","duplicateOfImageId":null}],"observationCount":1,"visibility":"partial","warnings":["Rear shelf obstructed"],"errorCode":null}]}
+{
+  "areaId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+  "name": "Pantry / Shelf A",
+  "captureStatus": "has_evidence",
+  "scans": [
+    {
+      "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "status": "evidence_ready",
+      "uploadedAt": "2026-11-18T17:05:00Z",
+      "analysisFinishedAt": "2026-11-18T17:05:08Z",
+      "photos": [
+        {
+          "imageId": "i1",
+          "uploadOrdinal": 0,
+          "capturedAt": "2026-11-18T17:04:00Z",
+          "captureTimeSource": "device_reported",
+          "duplicateOfImageId": null
+        },
+        {
+          "imageId": "i2",
+          "uploadOrdinal": 1,
+          "capturedAt": null,
+          "captureTimeSource": "unknown",
+          "duplicateOfImageId": null
+        }
+      ],
+      "observationCount": 1,
+      "visibility": "partial",
+      "warnings": ["Rear shelf obstructed"],
+      "errorCode": null
+    }
+  ]
+}
 ```
 
 `captureStatus` is `has_evidence` if any successful scan exists, otherwise `processing` if any claim is active, `failed` if only failed or expired scans exist, or `missing` if none exist. Include individual scan statuses so a mix of successful, failed and pending uploads is visible. A successful zero-item extraction still produces `has_evidence` with `observationCount: 0`. `visibility` and warnings are model evidence, with `visibility: null` before successful extraction. `captureCompleteness` is `complete` only when each required area has `has_evidence`. Only a closed session with that result is a completed capture session. Neither status provides a stock quantity or a guarantee of physical coverage. Errors are **400** invalid UUID/query and **404 SESSION_NOT_FOUND**.
@@ -243,7 +309,36 @@ photoMetadata=[{"deviceCapturedAt":"2026-11-18T17:04:00Z"},{"deviceCapturedAt":n
 ```
 
 ```json
-{"data":{"id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","areaId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa","status":"evidence_ready","uploadedAt":"2026-11-18T17:05:00Z","photos":[{"imageId":"i1","uploadOrdinal":0,"capturedAt":"2026-11-18T17:04:00Z","captureTimeSource":"device_reported","duplicateOfImageId":null},{"imageId":"i2","uploadOrdinal":1,"capturedAt":null,"captureTimeSource":"unknown","duplicateOfImageId":null}],"analysisFinishedAt":"2026-11-18T17:05:08Z","observationCount":1,"visibility":"partial","warnings":["Rear shelf obstructed"],"errorCode":null}}
+{
+  "data": {
+    "id": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+    "areaId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "status": "evidence_ready",
+    "uploadedAt": "2026-11-18T17:05:00Z",
+    "photos": [
+      {
+        "imageId": "i1",
+        "uploadOrdinal": 0,
+        "capturedAt": "2026-11-18T17:04:00Z",
+        "captureTimeSource": "device_reported",
+        "duplicateOfImageId": null
+      },
+      {
+        "imageId": "i2",
+        "uploadOrdinal": 1,
+        "capturedAt": null,
+        "captureTimeSource": "unknown",
+        "duplicateOfImageId": null
+      }
+    ],
+    "analysisFinishedAt": "2026-11-18T17:05:08Z",
+    "observationCount": 1,
+    "visibility": "partial",
+    "warnings": ["Rear shelf obstructed"],
+    "errorCode": null
+  }
+}
 ```
 
 - **Success.** 201 for first completion, 200 for a terminal replay or successful retry of an existing row, and 202 when an existing claim is active. A terminal replay after closure can report a persisted failure with 200 and `errorCode`. Evidence responses can include the session URI in `Location` for status recovery. Existing scan list/detail and review/approve/reject routes remain legacy-only and return 404 for an evidence ID where applicable.
@@ -256,37 +351,55 @@ photoMetadata=[{"deviceCapturedAt":"2026-11-18T17:04:00Z"},{"deviceCapturedAt":n
 
 ```json
 {
-  "data": [{
-    "id":"dddddddd-dddd-4ddd-8ddd-dddddddddddd",
-    "scanId":"cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-    "sessionId":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
-    "areaId":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-    "itemIndex":0,
-    "uploadedAt":"2026-11-18T17:05:00Z",
-    "recordedAt":"2026-11-18T17:05:08Z",
-    "modelId":"gpt-5-mini",
-    "promptVersion":"evidence-1",
-    "outputSchemaVersion":"1",
-    "productId":42,
-    "matchStatus":"matched",
-    "detectedIdentity":{"productName":"Black Beans","brand":"Example","packageSize":"15 oz","variation":null,"barcode":null},
-    "identityConfidence":0.91,
-    "quantityKind":"visible_count",
-    "quantity":4,
-    "quantityLower":null,
-    "quantityUpper":null,
-    "quantityConfidence":0.8,
-    "unit":"can",
-    "visibility":"partial",
-    "warnings":["Only front row visible"],
-    "sourceImageIds":["i1","i2"],
-    "sourceImages":[
-      {"imageId":"i1","uploadOrdinal":0,"capturedAt":"2026-11-18T17:04:00Z","captureTimeSource":"device_reported"},
-      {"imageId":"i2","uploadOrdinal":1,"capturedAt":null,"captureTimeSource":"unknown"}
-    ],
-    "overlapHint":"possible"
-  }],
-  "pagination":{"page":1,"limit":20,"hasMore":false}
+  "data": [
+    {
+      "id": "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      "scanId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      "sessionId": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "areaId": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "itemIndex": 0,
+      "uploadedAt": "2026-11-18T17:05:00Z",
+      "recordedAt": "2026-11-18T17:05:08Z",
+      "modelId": "gpt-5-mini",
+      "promptVersion": "evidence-1",
+      "outputSchemaVersion": "1",
+      "productId": 42,
+      "matchStatus": "matched",
+      "detectedIdentity": {
+        "productName": "Black Beans",
+        "brand": "Example",
+        "packageSize": "15 oz",
+        "variation": null,
+        "barcode": null
+      },
+      "identityConfidence": 0.91,
+      "quantityKind": "visible_count",
+      "quantity": 4,
+      "quantityLower": null,
+      "quantityUpper": null,
+      "quantityConfidence": 0.8,
+      "unit": "can",
+      "visibility": "partial",
+      "warnings": ["Only front row visible"],
+      "sourceImageIds": ["i1", "i2"],
+      "sourceImages": [
+        {
+          "imageId": "i1",
+          "uploadOrdinal": 0,
+          "capturedAt": "2026-11-18T17:04:00Z",
+          "captureTimeSource": "device_reported"
+        },
+        {
+          "imageId": "i2",
+          "uploadOrdinal": 1,
+          "capturedAt": null,
+          "captureTimeSource": "unknown"
+        }
+      ],
+      "overlapHint": "possible"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "hasMore": false }
 }
 ```
 
@@ -311,12 +424,12 @@ Read each source photo’s `capturedAt` and `captureTimeSource` from its manifes
 
 **Verified current behavior.** Sharp handles original bytes and builds normalized JPEGs and base64 inputs in memory. The OpenAI request uses `store: false`. PostgreSQL currently retains a combined fingerprint, not image bytes. Repo code supplies no organizational authorization, actual provider retention settings, or retention policy. [Image service](src/services/images.service.ts), [OpenAI service](src/services/openai.service.ts), [current scanning guide](docs/INVENTORY_SCANNING.md)
 
-| Consideration | Phase 1 structured observations and metadata | Possible future selective image retention |
-| --- | --- | --- |
-| Costs | PostgreSQL holds bounded JSON and hashes. The vision request and in-memory processing still cost time and compute. | Adds object storage, transfer, lifecycle handling, monitoring and any repeated vision calls. Estimate using actual upload counts, normalized sizes and retention days. |
-| Privacy | Limits local exposure of faces, identifying labels and location details. Extracted text and metadata can still be sensitive; restrict access and avoid logging payloads. | Adds access to scene content. Crop to useful views, avoid identifying details at capture, and document purpose and exceptions. |
-| Access and deletion | Staff-only evidence reads using the API above. Images have no local retrieval or deletion lifecycle. Set the retention schedule, backup policy and purge owner for structured evidence. | Use one private object store with encryption, scoped service permissions, staff access through short-lived authorized links, access auditing, TTL/lifecycle deletion and documented backup/deletion handling. Keep surviving evidence references marked deleted. |
-| Visual comparison | Compare dated structured detections, context and exact hashes. The system cannot visually check a different viewpoint, inspect a misread label, or recover details omitted by extraction. | Compare retained images by capture time, role and area. Reprocess actual pixels with a later model while preserving original capture time. Normalization and crop selection can lose detail even with storage. |
+| Consideration       | Phase 1 structured observations and metadata                                                                                                                                              | Possible future selective image retention                                                                                                                                                                                                                        |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Costs               | PostgreSQL holds bounded JSON and hashes. The vision request and in-memory processing still cost time and compute.                                                                        | Adds object storage, transfer, lifecycle handling, monitoring and any repeated vision calls. Estimate using actual upload counts, normalized sizes and retention days.                                                                                           |
+| Privacy             | Limits local exposure of faces, identifying labels and location details. Extracted text and metadata can still be sensitive; restrict access and avoid logging payloads.                  | Adds access to scene content. Crop to useful views, avoid identifying details at capture, and document purpose and exceptions.                                                                                                                                   |
+| Access and deletion | Staff-only evidence reads using the API above. Images have no local retrieval or deletion lifecycle. Set the retention schedule, backup policy and purge owner for structured evidence.   | Use one private object store with encryption, scoped service permissions, staff access through short-lived authorized links, access auditing, TTL/lifecycle deletion and documented backup/deletion handling. Keep surviving evidence references marked deleted. |
+| Visual comparison   | Compare dated structured detections, context and exact hashes. The system cannot visually check a different viewpoint, inspect a misread label, or recover details omitted by extraction. | Compare retained images by capture time, role and area. Reprocess actual pixels with a later model while preserving original capture time. Normalization and crop selection can lose detail even with storage.                                                   |
 
 **Final decision.** Phase 1 analyzes newly submitted photos and keeps structured observations, scan provenance, and ordered per-photo metadata. Original and normalized bytes remain transient during request handling. Do not persist them in PostgreSQL, S3, local durable disk, or any other persistent store. Do not save raw EXIF or base64 in logs. The same files must be resupplied for an upload retry. Historical AI can use the saved detections and their provenance in a later phase. Historical visual comparison and photo reprocessing are deferred, and Phase 1 photos will be unavailable for those features.
 
@@ -324,16 +437,16 @@ Before rollout, confirm the institutional photo policy, permitted structured-evi
 
 ## 11. Testing strategy
 
-| Scope | Mock or pure test | Real disposable PostgreSQL test |
-| --- | --- | --- |
-| Areas and manifests | Validate names, trim and strict fields, normalized UUIDs, filter flags, full requests without area IDs and individual requests with exactly one. Test API wiring. | Create/list/rename/archive/restore, case-insensitive collision, select active area, reject unknown and archived IDs, preserve membership after rename/archive. Test full snapshots that include every active area and exclude archived areas, one and zero active areas, and registration or archive on each side of the snapshot. Ensure later area changes cannot rewrite a manifest. Test full replay after registry changes and changed mode or individual area conflicts. |
-| Upload and association | Real Sharp on tiny fixtures. Mock the model to check ordered IDs, duplicate representatives and versioned payload. Validate positional metadata, missing metadata, mixed known/unknown and out-of-order device times, offset conversion, count mismatch and malformed timestamps. Assert upload multipart limits and disjoint legacy/evidence shapes. | Full mode with multiple areas and uploads, individual mode with one area and multiple uploads, wrong membership and unknown session, direct invalid composite FK inserts, closed session writes, and no reassignment. In a full session, test a successful empty extraction that counts toward capture, a failed area and a missing area. Close incomplete and retrieve saved observations. In a separate session capture every required area and verify complete closure without stock writes. |
-| Persist and retrieve | Mock responses with ambiguous/conflicting identities, confidence and uncertainty, unknown quantities, invalid ranges, unknown image references, refusal, malformed output and timeouts. Validate combined filter rules and DTO decoding. | Assert raw JSON and ordinals, nullable FK and confidence behavior, per-photo capture times and sources joined by ID, upload order with out-of-order timestamps, no timestamp substitution, late upload of older photos, deterministic paging/filtering, multiple observations for one product, and history across full and individual sessions. Ensure older rows remain readable and immutable after later scans and area rename/archive. Exercise quantity and state constraints directly. |
-| Duplicate prevention and recovery | Test scoped set fingerprint stability under reorder/exact duplicates and version changes. Check ordered replay identity separately, and spy on model inputs. | Same key with identical request, reordered files, or changed photo metadata; same distinct image set under different keys in the same scope; permitted same set in another scope; duplicate images within an upload. Race identical claims and a cross-session actor/key collision, checking one accepted claim per request. Exercise failed/expired retry, attempt cap, stale response fencing, and both upload/close interleavings. Use an injected clock where possible or set expiry on test fixture rows. |
-| Rollback | Mock provider failures for safe external errors and no retry inside the SDK. | Force failure in membership insertion and after at least one observation insert, for example via a test-scoped database trigger or constraint. Verify no partial manifest, raw success state, or observation rows, and verify the scan's separately recorded failure and successful retry. |
-| Stock and legacy compatibility | Verify evidence write DTOs contain no review fields or stock quantities. Keep legacy unit tests around normalization, validation and error mapping. | Run legacy suites. Compare stock, legacy area counts, products, transaction history and both nutrition representations before/after evidence success, empty results, failures, replays and closure. Assert evidence IDs cannot use legacy detail/review/reject/approve and no evidence scans enter legacy lists. Verify reviewed legacy approve/reject still works and retain the old JSON DTO shapes, text-area deltas and legacy replay behavior. |
-| Authorization | Use `createApp` with fake DB/vision and staff fixtures. Test 401 for no/bad token and 403 for viewers across new reads/writes before DB or AI access. | Test that a second staff member can read observations from complete and incomplete captures plus session and scan metadata. Verify non-owner upload/retry/close receives 403 without writes or AI calls. Check unrelated endpoints retain their access behavior and clients cannot override actors. |
-| Migration | Inspect SQL and compare Drizzle schema against migration generation in the implementation review. | In a separate disposable migration test, apply only through `0002`, seed the Section 6 fixture, apply the Phase 1 migrations, and compare all legacy columns, row IDs and links before/after. Also verify clean install through the full journal, old legacy uniqueness, new partial uniqueness and existing journal behavior. |
+| Scope                             | Mock or pure test                                                                                                                                                                                                                                                                                                                                     | Real disposable PostgreSQL test                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Areas and manifests               | Validate names, trim and strict fields, normalized UUIDs, filter flags, full requests without area IDs and individual requests with exactly one. Test API wiring.                                                                                                                                                                                     | Create/list/rename/archive/restore, case-insensitive collision, select active area, reject unknown and archived IDs, preserve membership after rename/archive. Test full snapshots that include every active area and exclude archived areas, one and zero active areas, and registration or archive on each side of the snapshot. Ensure later area changes cannot rewrite a manifest. Test full replay after registry changes and changed mode or individual area conflicts.                                 |
+| Upload and association            | Real Sharp on tiny fixtures. Mock the model to check ordered IDs, duplicate representatives and versioned payload. Validate positional metadata, missing metadata, mixed known/unknown and out-of-order device times, offset conversion, count mismatch and malformed timestamps. Assert upload multipart limits and disjoint legacy/evidence shapes. | Full mode with multiple areas and uploads, individual mode with one area and multiple uploads, wrong membership and unknown session, direct invalid composite FK inserts, closed session writes, and no reassignment. In a full session, test a successful empty extraction that counts toward capture, a failed area and a missing area. Close incomplete and retrieve saved observations. In a separate session capture every required area and verify complete closure without stock writes.                |
+| Persist and retrieve              | Mock responses with ambiguous/conflicting identities, confidence and uncertainty, unknown quantities, invalid ranges, unknown image references, refusal, malformed output and timeouts. Validate combined filter rules and DTO decoding.                                                                                                              | Assert raw JSON and ordinals, nullable FK and confidence behavior, per-photo capture times and sources joined by ID, upload order with out-of-order timestamps, no timestamp substitution, late upload of older photos, deterministic paging/filtering, multiple observations for one product, and history across full and individual sessions. Ensure older rows remain readable and immutable after later scans and area rename/archive. Exercise quantity and state constraints directly.                   |
+| Duplicate prevention and recovery | Test scoped set fingerprint stability under reorder/exact duplicates and version changes. Check ordered replay identity separately, and spy on model inputs.                                                                                                                                                                                          | Same key with identical request, reordered files, or changed photo metadata; same distinct image set under different keys in the same scope; permitted same set in another scope; duplicate images within an upload. Race identical claims and a cross-session actor/key collision, checking one accepted claim per request. Exercise failed/expired retry, attempt cap, stale response fencing, and both upload/close interleavings. Use an injected clock where possible or set expiry on test fixture rows. |
+| Rollback                          | Mock provider failures for safe external errors and no retry inside the SDK.                                                                                                                                                                                                                                                                          | Force failure in membership insertion and after at least one observation insert, for example via a test-scoped database trigger or constraint. Verify no partial manifest, raw success state, or observation rows, and verify the scan's separately recorded failure and successful retry.                                                                                                                                                                                                                     |
+| Stock and legacy compatibility    | Verify evidence write DTOs contain no review fields or stock quantities. Keep legacy unit tests around normalization, validation and error mapping.                                                                                                                                                                                                   | Run legacy suites. Compare stock, legacy area counts, products, transaction history and both nutrition representations before/after evidence success, empty results, failures, replays and closure. Assert evidence IDs cannot use legacy detail/review/reject/approve and no evidence scans enter legacy lists. Verify reviewed legacy approve/reject still works and retain the old JSON DTO shapes, text-area deltas and legacy replay behavior.                                                            |
+| Authorization                     | Use `createApp` with fake DB/vision and staff fixtures. Test 401 for no/bad token and 403 for viewers across new reads/writes before DB or AI access.                                                                                                                                                                                                 | Test that a second staff member can read observations from complete and incomplete captures plus session and scan metadata. Verify non-owner upload/retry/close receives 403 without writes or AI calls. Check unrelated endpoints retain their access behavior and clients cannot override actors.                                                                                                                                                                                                            |
+| Migration                         | Inspect SQL and compare Drizzle schema against migration generation in the implementation review.                                                                                                                                                                                                                                                     | In a separate disposable migration test, apply only through `0002`, seed the Section 6 fixture, apply the Phase 1 migrations, and compare all legacy columns, row IDs and links before/after. Also verify clean install through the full journal, old legacy uniqueness, new partial uniqueness and existing journal behavior.                                                                                                                                                                                 |
 
 Use fake vision responses in CI, including DB integration. Verify persisted metadata and API results contain no image bytes, base64, raw EXIF, or stored-file references, and confirm the upload path has no durable file or object writes. Do not depend on provider calls to test constraints, locks, isolation, or rollback. For eventual rollout, use approved representative photo fixtures to evaluate item/label accuracy, template validity, uncertainty reporting, and latency. Any independent reference counts are test labels, separate from staff capture.
 
@@ -343,30 +456,30 @@ Use the existing scripts and conventions in the implementation phase. `npm test`
 
 Paths here are relative to `backend/`. Keep the evidence contract unavailable to pilot clients until all steps and compatibility checks pass.
 
-| Step and dependency | Files and DB work | Backend work, tests and acceptance criteria |
-| --- | --- | --- |
-| 1. Add area/session persistence. No dependency. | `src/db/schema.ts`, next Drizzle migration and metadata. Create areas, sessions and manifest tables. | No route changes. Verify migration from `0002`, clean apply, unique names, FKs and existing row parity. This keeps the new tables inert and independently reviewable. |
-| 2. Add scan provenance and observations. Depends on 1. | `src/db/schema.ts`, subsequent Drizzle migration and metadata, `tests/evidence-migration.integration.test.ts`. Extend scan schema; create observations and indexes. | Same review must include legacy mode narrowing in `src/services/scans.service.ts` and explicit DTO compatibility in `src/routes/scans.ts` as needed for type safety. Add migration/regression tests for constraints, original fingerprint behavior and unchanged ledger and API. No evidence upload path yet. |
-| 3. Add canonical area lifecycle. Depends on 1. | New `inventory-areas` route, validator and service files, `src/app.ts`, evidence tests. No DB change. | Verify create/list/edit/archive/restore with auth, name uniqueness and stable IDs. Staff can select only active areas for a new manifest once sessions are enabled. |
-| 4. Add session manifests and lifecycle. Depends on 2 and 3. | New `scan-sessions` route, validator and service, `src/app.ts`, evidence tests. No DB change. | Verify an atomic snapshot of every active area for full mode and one selected active area for individual mode. Test replay, registry changes, capture completeness and owner-only closure. Closed incomplete sessions retain the full manifest and successful observations. |
-| 5. Validate the extraction contract. Depends on 2; can be reviewed alongside 3–4. | `src/validators/evidence-scans.ts`, `src/services/evidence-vision.service.ts`, `src/services/openai.service.ts`, `src/services/images.service.ts`, `tests/evidence.test.ts`. No DB change. | Verify ordered per-photo metadata and IDs, known and unknown capture times, separate server receipt time, structured prompt/schema, deduplication, source refs, uncertain quantities and safe errors with mocks. Confirm existing SDK and Sharp tests pass. |
-| 6. Wire evidence upload and atomic persistence. Depends on 4 and 5. | `src/routes/scans.ts`, `src/app.ts`, `src/services/evidence-scans.service.ts`, observation insert mapping in `src/services/observations.service.ts`, evidence and legacy scan tests. No DB change. | Verify correct multipart dispatch, owner and manifest checks, idempotency, retries, close races, fenced claims, and atomic success/failure. Evidence and failures are visible in session detail. Verify closed incomplete captures preserve evidence and that uploads persist metadata only. DB snapshots verify no legacy stock writes. |
-| 7. Add historical reads and release verification. Depends on 6. | `src/routes/observations.ts`, `src/validators/observations.ts`, `src/services/observations.service.ts`, `src/app.ts`, evidence tests, `docs/API.md`, `docs/INVENTORY_SCANNING.md`. No DB change. | Exercise full captures with complete and incomplete manifests and independent individual captures days apart. Verify source-photo provenance, batch ordering, unresolved observations, staff-wide history access, owner-only writes and empty results. Repeat stock/API regression and migration checks, document operational decisions and enable the pilot after compatible readers are deployed. |
+| Step and dependency                                                               | Files and DB work                                                                                                                                                                                  | Backend work, tests and acceptance criteria                                                                                                                                                                                                                                                                                                                                                         |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Add area/session persistence. No dependency.                                   | `src/db/schema.ts`, next Drizzle migration and metadata. Create areas, sessions and manifest tables.                                                                                               | No route changes. Verify migration from `0002`, clean apply, unique names, FKs and existing row parity. This keeps the new tables inert and independently reviewable.                                                                                                                                                                                                                               |
+| 2. Add scan provenance and observations. Depends on 1.                            | `src/db/schema.ts`, subsequent Drizzle migration and metadata, `tests/evidence-migration.integration.test.ts`. Extend scan schema; create observations and indexes.                                | Same review must include legacy mode narrowing in `src/services/scans.service.ts` and explicit DTO compatibility in `src/routes/scans.ts` as needed for type safety. Add migration/regression tests for constraints, original fingerprint behavior and unchanged ledger and API. No evidence upload path yet.                                                                                       |
+| 3. Add canonical area lifecycle. Depends on 1.                                    | New `inventory-areas` route, validator and service files, `src/app.ts`, evidence tests. No DB change.                                                                                              | Verify create/list/edit/archive/restore with auth, name uniqueness and stable IDs. Staff can select only active areas for a new manifest once sessions are enabled.                                                                                                                                                                                                                                 |
+| 4. Add session manifests and lifecycle. Depends on 2 and 3.                       | New `scan-sessions` route, validator and service, `src/app.ts`, evidence tests. No DB change.                                                                                                      | Verify an atomic snapshot of every active area for full mode and one selected active area for individual mode. Test replay, registry changes, capture completeness and owner-only closure. Closed incomplete sessions retain the full manifest and successful observations.                                                                                                                         |
+| 5. Validate the extraction contract. Depends on 2; can be reviewed alongside 3–4. | `src/validators/evidence-scans.ts`, `src/services/evidence-vision.service.ts`, `src/services/openai.service.ts`, `src/services/images.service.ts`, `tests/evidence.test.ts`. No DB change.         | Verify ordered per-photo metadata and IDs, known and unknown capture times, separate server receipt time, structured prompt/schema, deduplication, source refs, uncertain quantities and safe errors with mocks. Confirm existing SDK and Sharp tests pass.                                                                                                                                         |
+| 6. Wire evidence upload and atomic persistence. Depends on 4 and 5.               | `src/routes/scans.ts`, `src/app.ts`, `src/services/evidence-scans.service.ts`, observation insert mapping in `src/services/observations.service.ts`, evidence and legacy scan tests. No DB change. | Verify correct multipart dispatch, owner and manifest checks, idempotency, retries, close races, fenced claims, and atomic success/failure. Evidence and failures are visible in session detail. Verify closed incomplete captures preserve evidence and that uploads persist metadata only. DB snapshots verify no legacy stock writes.                                                            |
+| 7. Add historical reads and release verification. Depends on 6.                   | `src/routes/observations.ts`, `src/validators/observations.ts`, `src/services/observations.service.ts`, `src/app.ts`, evidence tests, `docs/API.md`, `docs/INVENTORY_SCANNING.md`. No DB change.   | Exercise full captures with complete and incomplete manifests and independent individual captures days apart. Verify source-photo provenance, batch ordering, unresolved observations, staff-wide history access, owner-only writes and empty results. Repeat stock/API regression and migration checks, document operational decisions and enable the pilot after compatible readers are deployed. |
 
 If the two persistence steps ship as separate reviews, the first new migration is expected to be `0003` and the scan/observation migration `0004`, subject to intervening migrations. Keep existing numbered migrations intact.
 
 ## 13. Risks and unresolved decisions
 
-| Decision or risk | Recommendation and implementation impact |
-| --- | --- |
-| Stable scope and legacy labels | Confirm the pilot's physical area list and boundaries with staff. A flat area register supports Phase 1. Approved legacy mappings are required only if older detection JSON must appear in the new history API. |
-| Complete active-area registry and scale | Verify every pilot storage area is registered. Size snapshot inserts and manifest responses for expected site volume. If pagination is needed, keep the full manifest and compute completeness from all required areas, independent of paging. |
-| Credential continuity | Staff-wide reads and creator-only writes are fixed. Confirm how stable staff IDs are managed through credential rotation. An interrupted session without its creator remains readable and a new capture can use a new session. |
-| Pilot limits and proxy behavior | Proposed per-area and processing limits are five uploads per area, three attempts per batch, and a 120-second claim. Full sessions include every active area regardless of area count. Confirm throughput, HTTP proxy limits/timeouts and latency with the actual deployment. If synchronous requests prove unreliable, revisit transport and worker design within the transient-photo constraint. |
-| Device capture time availability | Confirm which upload clients can supply device capture times, how they obtain them, and what to do with implausible clock skew. Treat missing values as unknown and keep server receipt separate. Bump the normalization version when image processing changes. |
-| Structured evidence governance | Phase 1 keeps photos transient. Confirm provider and institutional policies and the structured evidence and metadata retention schedule. Visual comparison and photo reprocessing are future work. |
-| Legacy stock drift | Existing manual mutations and scan area deltas can disagree. Keep this a known legacy risk and prevent any Phase 1 evidence processing from inheriting or trying to fix it. Future automatic initialization needs evidence of coherent scope, not reconstructed legacy allocations. |
-| Duplicate or movement ambiguity | A repeated SKU or barcode can be two packages or one package seen twice. Keep the structured source references and hints. Choose thresholds, joint analysis and acceptance policies with representative evidence in later phases. |
+| Decision or risk                        | Recommendation and implementation impact                                                                                                                                                                                                                                                                                                                                                           |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stable scope and legacy labels          | Confirm the pilot's physical area list and boundaries with staff. A flat area register supports Phase 1. Approved legacy mappings are required only if older detection JSON must appear in the new history API.                                                                                                                                                                                    |
+| Complete active-area registry and scale | Verify every pilot storage area is registered. Size snapshot inserts and manifest responses for expected site volume. If pagination is needed, keep the full manifest and compute completeness from all required areas, independent of paging.                                                                                                                                                     |
+| Credential continuity                   | Staff-wide reads and creator-only writes are fixed. Confirm how stable staff IDs are managed through credential rotation. An interrupted session without its creator remains readable and a new capture can use a new session.                                                                                                                                                                     |
+| Pilot limits and proxy behavior         | Proposed per-area and processing limits are five uploads per area, three attempts per batch, and a 120-second claim. Full sessions include every active area regardless of area count. Confirm throughput, HTTP proxy limits/timeouts and latency with the actual deployment. If synchronous requests prove unreliable, revisit transport and worker design within the transient-photo constraint. |
+| Device capture time availability        | Confirm which upload clients can supply device capture times, how they obtain them, and what to do with implausible clock skew. Treat missing values as unknown and keep server receipt separate. Bump the normalization version when image processing changes.                                                                                                                                    |
+| Structured evidence governance          | Phase 1 keeps photos transient. Confirm provider and institutional policies and the structured evidence and metadata retention schedule. Visual comparison and photo reprocessing are future work.                                                                                                                                                                                                 |
+| Legacy stock drift                      | Existing manual mutations and scan area deltas can disagree. Keep this a known legacy risk and prevent any Phase 1 evidence processing from inheriting or trying to fix it. Future automatic initialization needs evidence of coherent scope, not reconstructed legacy allocations.                                                                                                                |
+| Duplicate or movement ambiguity         | A repeated SKU or barcode can be two packages or one package seen twice. Keep the structured source references and hints. Choose thresholds, joint analysis and acceptance policies with representative evidence in later phases.                                                                                                                                                                  |
 
 ## 14. Phase 1 completion checklist
 

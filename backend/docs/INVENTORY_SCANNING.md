@@ -20,18 +20,18 @@ npm run dev
 
 ## Endpoints
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/inventory/scans` | Analyze multipart images; requires UUID `Idempotency-Key` |
-| GET | `/api/inventory/scans` | Paginated scan summaries |
-| GET | `/api/inventory/scans/:scanId` | Original analysis, reviewed items, status and errors |
-| PATCH | `/api/inventory/scans/:scanId/items/:itemId` | Correct, confirm or exclude an item |
-| POST | `/api/inventory/scans/:scanId/approve` | Apply every included, confirmed item atomically |
-| POST | `/api/inventory/scans/:scanId/reject` | Reject a pending scan without changing stock |
-| GET | `/api/inventory` | Existing inventory list |
-| GET | `/api/inventory/:id` | Existing inventory detail, plus `areas` with counts and expiry |
-| GET | `/api/inventory/:id/history` | Alias for existing `/transactions` history |
-| GET | `/api/products/:id` | Product detail, including separate `aiNutrition` candidate |
+| Method | Path                                         | Purpose                                                        |
+| ------ | -------------------------------------------- | -------------------------------------------------------------- |
+| POST   | `/api/inventory/scans`                       | Analyze multipart images; requires UUID `Idempotency-Key`      |
+| GET    | `/api/inventory/scans`                       | Paginated scan summaries                                       |
+| GET    | `/api/inventory/scans/:scanId`               | Original analysis, reviewed items, status and errors           |
+| PATCH  | `/api/inventory/scans/:scanId/items/:itemId` | Correct, confirm or exclude an item                            |
+| POST   | `/api/inventory/scans/:scanId/approve`       | Apply every included, confirmed item atomically                |
+| POST   | `/api/inventory/scans/:scanId/reject`        | Reject a pending scan without changing stock                   |
+| GET    | `/api/inventory`                             | Existing inventory list                                        |
+| GET    | `/api/inventory/:id`                         | Existing inventory detail, plus `areas` with counts and expiry |
+| GET    | `/api/inventory/:id/history`                 | Alias for existing `/transactions` history                     |
+| GET    | `/api/products/:id`                          | Product detail, including separate `aiNutrition` candidate     |
 
 All scan and item IDs are UUIDs; existing product, category and inventory IDs remain integers. Product create/PATCH also accepts nullable `packageSize` and `variation`. Scan POST returns 201, or 202 for an already processing scan. Analysis is synchronous; configure the HTTP proxy timeout above 90 seconds. Scan results use `pending_review`, not `completed`, until approved or rejected. Scan history includes actor ID and error code; detail includes original structured analysis and mutable review items. No images/base64 are stored in PostgreSQL or on disk.
 
@@ -58,16 +58,28 @@ A response has this abbreviated shape (the actual nutrition schema includes all 
     "status": "pending_review",
     "area": "pantry-shelf-a",
     "analysis": { "items": [], "warnings": [] },
-    "items": [{
-      "id": "89998eed-d708-4cf1-9969-6decdcb07126",
-      "productName": "Cheerios", "brand": "General Mills",
-      "packageSize": "18 oz", "variation": "Original",
-      "quantity": 12, "unit": "boxes", "quantityKind": "visible_count",
-      "confidence": 0.95, "quantityConfidence": 0.95,
-      "needsReview": false, "confirmed": false, "excluded": false,
-      "productId": 10, "isNewProduct": false,
-      "initialAreaQuantity": null, "nutrition": null, "expirationDate": null
-    }]
+    "items": [
+      {
+        "id": "89998eed-d708-4cf1-9969-6decdcb07126",
+        "productName": "Cheerios",
+        "brand": "General Mills",
+        "packageSize": "18 oz",
+        "variation": "Original",
+        "quantity": 12,
+        "unit": "boxes",
+        "quantityKind": "visible_count",
+        "confidence": 0.95,
+        "quantityConfidence": 0.95,
+        "needsReview": false,
+        "confirmed": false,
+        "excluded": false,
+        "productId": 10,
+        "isNewProduct": false,
+        "initialAreaQuantity": null,
+        "nutrition": null,
+        "expirationDate": null
+      }
+    ]
   }
 }
 ```

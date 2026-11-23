@@ -20,15 +20,15 @@ Staff uploads 1–5 images and one area name
   -> approval transaction changes inventory, area counts, history, and status
 ```
 
-| Existing table | Implemented responsibility | Limitation for the target workflow |
-|---|---|---|
-| `categories` | Product classifications | AI category text is not automatically mapped to category IDs |
-| `products` | Name, brand, size, variation, barcode, manual nutrition | Only barcode is a unique product identifier; no alias/evidence history |
-| `inventory` | One total integer quantity and unit per product | No freshness, uncertainty, reconciliation version, or coverage semantics |
-| `inventory_transactions` | Signed quantity changes with reasons, actor, before/after totals, optional scan | Does not represent observation-only changes or transfers explicitly |
-| `inventory_scans` | One area, status, original analysis JSON, reviewed-item JSON, fingerprint | No multi-area session, capture window, coverage record, or image references |
-| `inventory_area_counts` | Latest approved quantity/date per product and area | Overwrites current baseline; insufficient as historical observation storage |
-| `product_nutrition` | One AI candidate per product, source scan, `verified` flag | No supported verification/correction workflow; later candidates cannot replace it |
+| Existing table           | Implemented responsibility                                                      | Limitation for the target workflow                                                |
+| ------------------------ | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `categories`             | Product classifications                                                         | AI category text is not automatically mapped to category IDs                      |
+| `products`               | Name, brand, size, variation, barcode, manual nutrition                         | Only barcode is a unique product identifier; no alias/evidence history            |
+| `inventory`              | One total integer quantity and unit per product                                 | No freshness, uncertainty, reconciliation version, or coverage semantics          |
+| `inventory_transactions` | Signed quantity changes with reasons, actor, before/after totals, optional scan | Does not represent observation-only changes or transfers explicitly               |
+| `inventory_scans`        | One area, status, original analysis JSON, reviewed-item JSON, fingerprint       | No multi-area session, capture window, coverage record, or image references       |
+| `inventory_area_counts`  | Latest approved quantity/date per product and area                              | Overwrites current baseline; insufficient as historical observation storage       |
+| `product_nutrition`      | One AI candidate per product, source scan, `verified` flag                      | No supported verification/correction workflow; later candidates cannot replace it |
 
 Sources: [schema](src/db/schema.ts#L17), [initial migration](drizzle/0000_initial_schema.sql), [scanning migration](drizzle/0001_ai_inventory_scanning.sql), [expiration migration](drizzle/0002_area_expiration.sql).
 
@@ -61,16 +61,16 @@ All resource access currently requires staff credentials, including reads. There
 
 The target normal workflow must ask staff for photographs and exception oversight, never numeric counts, first-area quantities, or area reconciliation calculations. Removing the confirmation requirement alone would automate the existing errors.
 
-| Requirement | Current status | Required evolution |
-|---|---|---|
-| Automatic identification/counting | Partial: image extraction exists | Contextual identity resolution, evidence, measured acceptance rules |
-| Automatic inventory application | Missing: confirmation and baseline entry required | Policy-controlled reconciliation and transactional application |
-| Full multi-area session | Missing | Session manifest, per-area coverage, joint analysis and one reconciliation |
-| Individual scans over days | Partial: named area scans exist | Historical observations, freshness, unresolved movement handling |
-| Movement/removal distinction | Missing | Separate observed changes, movement hypotheses, and confirmed events |
-| Historical visual comparison | Missing | Selected private image evidence and explicit current/prior labels |
-| Reliable current total | Partial | One versioned projection with certainty, scope, and timestamps |
-| Student assistant | Missing | Authorized read-only tools over that projection |
+| Requirement                       | Current status                                    | Required evolution                                                         |
+| --------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------- |
+| Automatic identification/counting | Partial: image extraction exists                  | Contextual identity resolution, evidence, measured acceptance rules        |
+| Automatic inventory application   | Missing: confirmation and baseline entry required | Policy-controlled reconciliation and transactional application             |
+| Full multi-area session           | Missing                                           | Session manifest, per-area coverage, joint analysis and one reconciliation |
+| Individual scans over days        | Partial: named area scans exist                   | Historical observations, freshness, unresolved movement handling           |
+| Movement/removal distinction      | Missing                                           | Separate observed changes, movement hypotheses, and confirmed events       |
+| Historical visual comparison      | Missing                                           | Selected private image evidence and explicit current/prior labels          |
+| Reliable current total            | Partial                                           | One versioned projection with certainty, scope, and timestamps             |
+| Student assistant                 | Missing                                           | Authorized read-only tools over that projection                            |
 
 ### A necessary accuracy boundary
 
@@ -136,13 +136,13 @@ These are conceptual schema changes for future reviewed migrations. No SQL migra
 
 ### Add the minimum evidence and reconciliation model
 
-| Proposed record | Key structured fields | Purpose |
-|---|---|---|
-| `inventory_areas` | Stable ID, name, parent/location, active state, non-overlapping counting scope, expected views | Resolve spelling aliases; prevent counting parent room plus its child shelves twice |
-| `inventory_scan_sessions` | UUID, mode, actor, intended scope, started/closed times, lifecycle, idempotency key, capture-window policy | Group full or individual scans; distinguish intended scope from actual coverage |
-| `inventory_session_areas` | Session ID + area ID, capture window, coverage/quality status, expected/received views, missing reasons | Represent missing/failed/empty areas even when there are no item detections |
-| `inventory_observations` | UUID, session/scan/area/product references, nullable unresolved identity, capture time, quantity estimate, optional lower/upper limits, unit, count kind, separate confidence fields, superseded reference | Preserve time-series observations rather than overwriting a baseline |
-| `inventory_reconciliations` | UUID, status, input observation IDs, expected product versions, policy/model versions, decision time, accepted version, decision/evidence JSON | Persist proposals, deferrals, movement hypotheses, acceptance, retries, and explanations |
+| Proposed record             | Key structured fields                                                                                                                                                                                      | Purpose                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `inventory_areas`           | Stable ID, name, parent/location, active state, non-overlapping counting scope, expected views                                                                                                             | Resolve spelling aliases; prevent counting parent room plus its child shelves twice      |
+| `inventory_scan_sessions`   | UUID, mode, actor, intended scope, started/closed times, lifecycle, idempotency key, capture-window policy                                                                                                 | Group full or individual scans; distinguish intended scope from actual coverage          |
+| `inventory_session_areas`   | Session ID + area ID, capture window, coverage/quality status, expected/received views, missing reasons                                                                                                    | Represent missing/failed/empty areas even when there are no item detections              |
+| `inventory_observations`    | UUID, session/scan/area/product references, nullable unresolved identity, capture time, quantity estimate, optional lower/upper limits, unit, count kind, separate confidence fields, superseded reference | Preserve time-series observations rather than overwriting a baseline                     |
+| `inventory_reconciliations` | UUID, status, input observation IDs, expected product versions, policy/model versions, decision time, accepted version, decision/evidence JSON                                                             | Persist proposals, deferrals, movement hypotheses, acceptance, retries, and explanations |
 
 Use existing `inventory_scans` as a processing attempt linked to a session and area; retain raw analysis JSON for audit. Add model, prompt, output-schema version, processing timestamps, retry/lease fields, and context observation IDs. Separate a photograph's identity from a processing attempt so deliberate reanalysis can reuse evidence. Do not copy its old observation into a new capture time.
 
@@ -205,13 +205,13 @@ Current and previous images can be provided together, but label them clearly by 
 
 ### Separate what was seen from why it changed
 
-| Evidence | Permitted conclusion | Unsupported conclusion |
-|---|---|---|
-| A new area photo shows fewer packages | Local observed decrease, if coverage supports it | Confirmed distribution/removal from cupboard |
-| Another area shows more of the same SKU | Possible transfer or receipt | Proof these are the source area's missing packages |
-| A complete coherent full session shows fewer unique packages overall | Accepted snapshot correction, if quality gates pass | Proof of theft, distribution, or a particular removal event |
-| A package is absent from an obstructed photograph | No reliable absence measurement | Zero stock |
-| A dated receiving/distribution capture traces packages across the boundary | Candidate confirmed receipt/removal, subject to identity/time gates | Any unrelated historical discrepancy is resolved |
+| Evidence                                                                   | Permitted conclusion                                                | Unsupported conclusion                                      |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------- | ----------------------------------------------------------- |
+| A new area photo shows fewer packages                                      | Local observed decrease, if coverage supports it                    | Confirmed distribution/removal from cupboard                |
+| Another area shows more of the same SKU                                    | Possible transfer or receipt                                        | Proof these are the source area's missing packages          |
+| A complete coherent full session shows fewer unique packages overall       | Accepted snapshot correction, if quality gates pass                 | Proof of theft, distribution, or a particular removal event |
+| A package is absent from an obstructed photograph                          | No reliable absence measurement                                     | Zero stock                                                  |
+| A dated receiving/distribution capture traces packages across the boundary | Candidate confirmed receipt/removal, subject to identity/time gates | Any unrelated historical discrepancy is resolved            |
 
 Store movement hypotheses with source/destination, quantity/range, supporting observations, time window, confidence, and status. Compatible opposite deltas can suggest a move; they do not establish it. A sufficiently coherent joint snapshot can establish current distribution even when the causal history remains unknown. Record that as an observed redistribution, not a confirmed physical transfer event.
 
@@ -240,13 +240,13 @@ Fresh visible counts can support statements about what was seen at capture time.
 
 ### Example: asynchronous movement without double-counting
 
-| Step | Evidence | System behavior |
-|---|---|---|
-| Monday | Coherent accepted snapshot: A=10, B=0 | Total 10 at revision 1 |
-| Tuesday | Five packages may have moved; B photograph shows 5; A is stale | Save B=5 observation; do not compute 10+5; total stays last accepted 10, now unresolved |
-| Tuesday follow-up | A and B recaptured in a short coherent window: A=5, B=5 | Accept distribution 5+5=10 at revision 2; net total delta zero; causal move remains inferred unless independently evidenced |
-| Alternative follow-up | Coherent coverage shows A=10, B=5 | Accept total 15 via snapshot correction; receipt cause remains unknown |
-| Alternative obstruction | A cannot be seen reliably | Keep unresolved; request better view, no manual quantity entry |
+| Step                    | Evidence                                                       | System behavior                                                                                                             |
+| ----------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Monday                  | Coherent accepted snapshot: A=10, B=0                          | Total 10 at revision 1                                                                                                      |
+| Tuesday                 | Five packages may have moved; B photograph shows 5; A is stale | Save B=5 observation; do not compute 10+5; total stays last accepted 10, now unresolved                                     |
+| Tuesday follow-up       | A and B recaptured in a short coherent window: A=5, B=5        | Accept distribution 5+5=10 at revision 2; net total delta zero; causal move remains inferred unless independently evidenced |
+| Alternative follow-up   | Coherent coverage shows A=10, B=5                              | Accept total 15 via snapshot correction; receipt cause remains unknown                                                      |
+| Alternative obstruction | A cannot be seen reliably                                      | Keep unresolved; request better view, no manual quantity entry                                                              |
 
 A single A=5 observation with stale B must likewise not automatically reduce total 10 to 5. If Tuesday's photographs span too long or show active movement, they do not establish a coherent snapshot; request an appropriate recapture. A closed session is not automatically a valid snapshot.
 
@@ -295,14 +295,14 @@ Question -> AI selects a read-only tool -> Zod validates arguments
 
 Implement small tools such as product search, availability by product/category, latest observed locations, expiration candidates/lots, and accepted nutrition. These are proposed tools, not existing endpoints. OpenAI's [function-calling workflow](https://developers.openai.com/api/docs/guides/function-calling) supports executing application-side code and returning its results; the model does not need arbitrary database access.
 
-| Question | Retrieval behavior |
-|---|---|
-| How many cereal boxes are available? | Server joins products/categories to the projection, groups compatible units, and returns accepted quantity status/as-of time; unresolved current quantity is unknown |
-| Where is rice? | Return latest reliable sightings with area, capture time, and stale/uncertain labels; do not claim old accepted placement is current |
-| What expires soon? | Query associated dates and lot quantities where known; distinguish one observed date from the entire product stock |
-| What is high in protein? | Query accepted nutrition, serving basis, source and verification status; missing nutrition is unknown, not zero |
-| What ingredients are in this product? | Return exact-product label evidence/accepted profile; absence of allergen text does not establish safety |
-| What can I make for a meal? | Retrieve available/possibly available items first; meal ideas are suggestions, while availability and nutritional numbers require database evidence |
+| Question                              | Retrieval behavior                                                                                                                                                   |
+| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| How many cereal boxes are available?  | Server joins products/categories to the projection, groups compatible units, and returns accepted quantity status/as-of time; unresolved current quantity is unknown |
+| Where is rice?                        | Return latest reliable sightings with area, capture time, and stale/uncertain labels; do not claim old accepted placement is current                                 |
+| What expires soon?                    | Query associated dates and lot quantities where known; distinguish one observed date from the entire product stock                                                   |
+| What is high in protein?              | Query accepted nutrition, serving basis, source and verification status; missing nutrition is unknown, not zero                                                      |
+| What ingredients are in this product? | Return exact-product label evidence/accepted profile; absence of allergen text does not establish safety                                                             |
+| What can I make for a meal?           | Retrieve available/possibly available items first; meal ideas are suggestions, while availability and nutritional numbers require database evidence                  |
 
 Return product IDs, unit, accepted revision, observation/acceptance timestamps, certainty/coverage, source and verification metadata. Compute totals, date filters and nutrient comparisons in code/SQL. Use a consistent read transaction or version token across related tools so one answer does not mix revisions. Recheck before any future stock-dependent action. Cache only with short expiry/version invalidation.
 
@@ -314,13 +314,13 @@ Introduce a student-safe read authorization path that exposes only public invent
 
 ### Incremental delivery
 
-| Phase | Deliverable | Exit criteria |
-|---|---|---|
-| 1: Evidence foundation | Canonical areas, sessions/coverage, append-only observations, versions/provenance; preserve existing history | Both capture modes save complete evidence; no automatic stock writes; no manual baseline dependency in new workflow |
-| 2: Context and shadow reconciliation | Catalog retrieval, joint multi-area analysis, counterpart history, recapture requests; compare proposals without applying them | Representative evaluation demonstrates identity/count/coverage and double-count controls; unresolved cases remain explicit |
-| 3: Unified automatic application | Versioned projection, idempotent atomic acceptance, stale/retry handling; AI-led initialization | High-evidence cases apply without staff quantities; all writers share consistency rules; failures leave stock unchanged |
-| 4: Selective visual history and nutrition | Private retained evidence where needed, deletion controls, exact-product nutrition/date provenance | Authorized evidence retrieval works; image expiry does not destroy accepted history; uncertain label facts remain candidates |
-| 5: Student retrieval and rollout | Student-safe tools, freshness-aware UI/assistant, monitoring | Fact grounding and authorization tests pass; gradual automation with rollback/freeze controls |
+| Phase                                     | Deliverable                                                                                                                    | Exit criteria                                                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| 1: Evidence foundation                    | Canonical areas, sessions/coverage, append-only observations, versions/provenance; preserve existing history                   | Both capture modes save complete evidence; no automatic stock writes; no manual baseline dependency in new workflow          |
+| 2: Context and shadow reconciliation      | Catalog retrieval, joint multi-area analysis, counterpart history, recapture requests; compare proposals without applying them | Representative evaluation demonstrates identity/count/coverage and double-count controls; unresolved cases remain explicit   |
+| 3: Unified automatic application          | Versioned projection, idempotent atomic acceptance, stale/retry handling; AI-led initialization                                | High-evidence cases apply without staff quantities; all writers share consistency rules; failures leave stock unchanged      |
+| 4: Selective visual history and nutrition | Private retained evidence where needed, deletion controls, exact-product nutrition/date provenance                             | Authorized evidence retrieval works; image expiry does not destroy accepted history; uncertain label facts remain candidates |
+| 5: Student retrieval and rollout          | Student-safe tools, freshness-aware UI/assistant, monitoring                                                                   | Fact grounding and authorization tests pass; gradual automation with rollback/freeze controls                                |
 
 Selected image retention may move into phase 1 if cross-session visual evidence is needed for the pilot. Do not add it merely to store every upload. Session/image upload endpoints and policy decisions require future implementation; no route described here exists automatically because it appears in this document.
 
@@ -330,29 +330,29 @@ Begin with visible packaged goods in known non-overlapping views and a narrow se
 
 Existing tests cover image decoding, product matching, structured SDK requests, authentication, baseline/delta approval, rollback, stale scans, new products, exclusions, and nutrition preservation. They test the current manual-review contract, not the proposed architecture. OpenAI is mocked. Sources: [scan unit tests](tests/scans.test.ts), [scan integration tests](tests/scans.integration.test.ts), [API integration tests](tests/api.integration.test.ts), [validation tests](tests/validation.test.ts).
 
-| Required test scenario | Expected future behavior |
-|---|---|
+| Required test scenario                                     | Expected future behavior                                                     |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | Repeated identical upload/application; crash between steps | One accepted change; resumable attempt; same captured evidence not new stock |
-| Reanalysis after model/prompt upgrade | New processing/observation version; no duplicate application |
-| Full session A=5/B=5 after A=10/B=0 | Total 10; joint accepted revision; no independent +5/-5 race |
-| Tuesday B=5 with Monday A=10 | Unresolved, not total 15; request counterpart evidence |
-| A disappears but B unscanned | No automatic removal/zeroing elsewhere |
-| Complete whole-scope decline with unknown cause | Snapshot correction, not a fabricated confirmed removal |
-| Partial/blurred/obstructed/empty extraction | Missing evidence, not empty inventory |
-| Same boxes in overlapping or cross-area images | Shared instance hypotheses; no exact sum until overlap resolved |
-| Package moves while a full session is captured | Temporal ambiguity blocks simultaneous-snapshot assumption |
-| Parent room plus child shelf photographed | Non-overlapping scope rules prevent double allocation |
-| New destination sighting after confirmed transfer | No second total increase; event/observation provenance deduplicates |
-| Manual legacy change before new scan | No baseline subtraction drift; new initialization/provenance policy enforced |
-| New/ambiguous SKU, conflicting barcode, different size | Candidate or separate product; no unsafe merge/nutrition transfer |
-| Concurrent sessions, late uploads, stale versions | No lost update or regression; recompute/hold against current revision |
-| Mid-transaction failure and projection rebuild | Atomic rollback; replay accepted decisions reconstructs same totals |
-| No global stock delta | Reconciliation/location history still retained |
-| Old/partial photo and no upper bound | No fake exact count or finite guaranteed range |
-| Different dates on packages | Preserve distinct date evidence; no blanket expiration assignment |
-| Student asks for missing quantity/nutrition | Explicit unknown, no invented values; consistent revision |
-| Prompt injection, unauthorized image/tool access | No instruction override, inventory mutation, or private evidence leakage |
-| Evidence deletion and expired links | Image unavailable; structured history/provenance remains auditable |
+| Reanalysis after model/prompt upgrade                      | New processing/observation version; no duplicate application                 |
+| Full session A=5/B=5 after A=10/B=0                        | Total 10; joint accepted revision; no independent +5/-5 race                 |
+| Tuesday B=5 with Monday A=10                               | Unresolved, not total 15; request counterpart evidence                       |
+| A disappears but B unscanned                               | No automatic removal/zeroing elsewhere                                       |
+| Complete whole-scope decline with unknown cause            | Snapshot correction, not a fabricated confirmed removal                      |
+| Partial/blurred/obstructed/empty extraction                | Missing evidence, not empty inventory                                        |
+| Same boxes in overlapping or cross-area images             | Shared instance hypotheses; no exact sum until overlap resolved              |
+| Package moves while a full session is captured             | Temporal ambiguity blocks simultaneous-snapshot assumption                   |
+| Parent room plus child shelf photographed                  | Non-overlapping scope rules prevent double allocation                        |
+| New destination sighting after confirmed transfer          | No second total increase; event/observation provenance deduplicates          |
+| Manual legacy change before new scan                       | No baseline subtraction drift; new initialization/provenance policy enforced |
+| New/ambiguous SKU, conflicting barcode, different size     | Candidate or separate product; no unsafe merge/nutrition transfer            |
+| Concurrent sessions, late uploads, stale versions          | No lost update or regression; recompute/hold against current revision        |
+| Mid-transaction failure and projection rebuild             | Atomic rollback; replay accepted decisions reconstructs same totals          |
+| No global stock delta                                      | Reconciliation/location history still retained                               |
+| Old/partial photo and no upper bound                       | No fake exact count or finite guaranteed range                               |
+| Different dates on packages                                | Preserve distinct date evidence; no blanket expiration assignment            |
+| Student asks for missing quantity/nutrition                | Explicit unknown, no invented values; consistent revision                    |
+| Prompt injection, unauthorized image/tool access           | No instruction override, inventory mutation, or private evidence leakage     |
+| Evidence deletion and expired links                        | Image unavailable; structured history/provenance remains auditable           |
 
 Use labeled evaluation photographs with independently established reference counts for testing only. This does not introduce manual counting into normal staff workflow. Measure identity precision by size/variation, count error, false automatic changes, duplicate rate, abstention/recapture rate, stale-answer rate, and cost/latency. Stratify results by occlusion, lighting, package density and area. Repeated model agreement is not ground truth. Track harmful false acceptance separately from unresolved scans; do not improve automation rate by suppressing uncertainty.
 
