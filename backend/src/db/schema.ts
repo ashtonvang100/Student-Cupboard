@@ -1,6 +1,6 @@
 import type { Analysis, ScanItem } from '../validators/scans.js'
 import { sql } from 'drizzle-orm'
-import { pgTable, integer, text, varchar, timestamp, jsonb, index, uniqueIndex, check, uuid, boolean, primaryKey, date } from 'drizzle-orm/pg-core'
+import { pgTable, integer, text, varchar, timestamp, jsonb, index, uniqueIndex, check, uuid, boolean, primaryKey, date, foreignKey } from 'drizzle-orm/pg-core'
 
 export type Nutrition = {
   servingSize?: string
@@ -95,3 +95,36 @@ export const inventoryAreaCounts = pgTable('inventory_area_counts', {
   scanId: uuid('scan_id').notNull().references(() => inventoryScans.id),
   updatedAt: updatedAt(),
 }, t => [primaryKey({ columns: [t.productId, t.area] }), check('area_quantity_nonnegative', sql`${t.quantity} >= 0`)])
+
+export const inventoryAreas = pgTable('inventory_areas', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 120 }).notNull(),
+  archivedAt: timestamp('archived_at', { withTimezone: true }),
+  createdAt: createdAt(),
+}, t => [
+  uniqueIndex('inventory_areas_name_unique').on(sql`lower(btrim(${t.name}))`),
+  check('inventory_areas_name_valid', sql`${t.name} = btrim(${t.name}) AND length(${t.name}) > 0 AND ${t.name} !~ '[[:cntrl:]]'`),
+])
+
+export const inventoryScanSessions = pgTable('inventory_scan_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  mode: varchar('mode', { length: 16 }).$type<'full' | 'individual'>().notNull(),
+  actorId: varchar('actor_id', { length: 200 }).notNull(),
+  idempotencyKey: uuid('idempotency_key').notNull(),
+  createdAt: createdAt(),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+}, t => [
+  uniqueIndex('inventory_scan_sessions_actor_key_unique').on(t.actorId, t.idempotencyKey),
+  check('inventory_scan_sessions_mode_valid', sql`${t.mode} IN ('full', 'individual')`),
+  check('inventory_scan_sessions_closed_at_valid', sql`${t.closedAt} IS NULL OR ${t.closedAt} >= ${t.createdAt}`),
+])
+
+export const inventorySessionAreas = pgTable('inventory_session_areas', {
+  sessionId: uuid('session_id').notNull(),
+  areaId: uuid('area_id').notNull(),
+}, t => [
+  primaryKey({ columns: [t.sessionId, t.areaId] }),
+  foreignKey({ name: 'inventory_session_areas_session_fk', columns: [t.sessionId], foreignColumns: [inventoryScanSessions.id] }).onDelete('restrict'),
+  foreignKey({ name: 'inventory_session_areas_area_fk', columns: [t.areaId], foreignColumns: [inventoryAreas.id] }).onDelete('restrict'),
+  index('inventory_session_areas_area_session_idx').on(t.areaId, t.sessionId),
+])
